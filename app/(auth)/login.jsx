@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { login } from '../../src/services/auth.service';
+import { login, resendVerificationEmail } from '../../src/services/auth.service';
 import { colors, spacing, radius, font } from '../../src/theme';
 
 export default function LoginScreen() {
@@ -60,7 +60,28 @@ export default function LoginScreen() {
         router.replace('/(client)');
       }
     } catch (error) {
-      Alert.alert('Login Failed', getLoginErrorMessage(error));
+      if (error.message?.includes('verify your email')) {
+        Alert.alert(
+          'Email Not Verified',
+          'Please verify your email before logging in. Need a new verification link?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Resend Email',
+              onPress: async () => {
+                try {
+                  await resendVerificationEmail(trimmedEmail, password);
+                  Alert.alert('Email Sent', 'A new verification link has been sent to ' + trimmedEmail + '.');
+                } catch {
+                  Alert.alert('Error', 'Could not resend email. Please try again.');
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Login Failed', getLoginErrorMessage(error));
+      }
     } finally {
       setLoading(false);
     }

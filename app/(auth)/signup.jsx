@@ -76,7 +76,11 @@ export default function SignupScreen() {
         });
       }
 
-      router.replace(role === 'therapist' ? '/(therapist)' : '/(client)');
+      Alert.alert(
+        'Verify Your Email',
+        'A verification link has been sent to ' + email.trim() + '. Please check your inbox and verify your email before logging in.',
+        [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
+      );
     } catch (error) {
       Alert.alert('Sign Up Failed', error.message || 'Something went wrong. Please try again.');
     } finally {
