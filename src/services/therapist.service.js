@@ -42,20 +42,22 @@ export const getTherapistClients = async (therapistId) => {
         const userDoc = await getDoc(doc(db, 'users', clientId));
         const userData = userDoc.exists() ? userDoc.data() : {};
 
-        // Get client's latest entry
+        // Get client's recent entries
         const entriesQuery = query(
           collection(db, 'entries'),
           where('userId', '==', clientId),
           orderBy('date', 'desc'),
-          limit(1)
+          limit(7)
         );
         const entriesSnapshot = await getDocs(entriesQuery);
-        const latestEntry = entriesSnapshot.docs[0]?.data() || null;
+        const recentEntries = entriesSnapshot.docs.map(d => d.data());
+        const latestEntry = recentEntries[0] || null;
 
         return {
           id: clientId,
           ...clientsData[clientId],
           ...userData,
+          recentEntries,
           latestEntry
         };
       })
@@ -168,20 +170,22 @@ export const subscribeToClients = (therapistId, callback, errorCallback) => {
           const userDoc = await getDoc(doc(db, 'users', clientId));
           const userData = userDoc.exists() ? userDoc.data() : {};
 
-          // Get client's latest entry
+          // Get client's recent entries
           const entriesQuery = query(
             collection(db, 'entries'),
             where('userId', '==', clientId),
             orderBy('date', 'desc'),
-            limit(1)
+            limit(7)
           );
           const entriesSnapshot = await getDocs(entriesQuery);
-          const latestEntry = entriesSnapshot.docs[0]?.data() || null;
+          const recentEntries = entriesSnapshot.docs.map(d => d.data());
+          const latestEntry = recentEntries[0] || null;
 
           return {
             id: clientId,
             ...clientsData[clientId],
             ...userData,
+            recentEntries,
             latestEntry
           };
         })
