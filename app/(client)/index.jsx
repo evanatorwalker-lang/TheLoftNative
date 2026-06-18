@@ -45,6 +45,15 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const GRADIENT = ['#4361EE', '#48CAE4'];
 const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+const STARS = Array.from({ length: 22 }, (_, i) => ({
+  id: i,
+  x: Math.random() * 92 + 2,
+  y: Math.random() * 88 + 2,
+  size: 1.5 + Math.random() * 2.5,
+  baseOpacity: 0.5 + Math.random() * 0.5,
+  group: i % 4,
+}));
+
 function toLocalDateString(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -87,11 +96,11 @@ function getMotivation(streak) {
 }
 
 function getTrophyTier(streak) {
-  if (streak === 0) return { name: 'trophy-outline', color: '#9ca3af' }; // gray
-  if (streak < 7)   return { name: 'trophy',         color: '#CD7F32' }; // bronze
-  if (streak < 21)  return { name: 'trophy',         color: '#C0C0C0' }; // silver
-  if (streak < 50)  return { name: 'trophy',         color: '#FFE066' }; // gold
-  return                   { name: 'trophy',         color: '#E0F7FA' }; // platinum
+  if (streak === 0) return { name: 'trophy-outline', color: '#9ca3af', tier: 'NO STREAK YET' };
+  if (streak < 7)   return { name: 'trophy',         color: '#CD7F32', tier: 'BRONZE TIER' };
+  if (streak < 21)  return { name: 'trophy',         color: '#C0C0C0', tier: 'SILVER TIER' };
+  if (streak < 50)  return { name: 'trophy',         color: '#FFE066', tier: 'GOLD TIER' };
+  return                   { name: 'trophy',         color: '#B2EBF2', tier: 'PLATINUM TIER' };
 }
 
 const NAV_ITEMS = [
@@ -191,6 +200,7 @@ export default function ClientHome() {
   const { entries = [], loading } = useEntries(currentUser?.uid);
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tierInfoVisible, setTierInfoVisible] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [expandedEntry, setExpandedEntry] = useState(null);
 
@@ -229,6 +239,16 @@ export default function ClientHome() {
   const glowOpacity = useSharedValue(0);
   const floatY = useSharedValue(0);
 
+  // ── Star twinkle groups ───────────────────────────────────────────────────
+  const twinkle0 = useSharedValue(1);
+  const twinkle1 = useSharedValue(1);
+  const twinkle2 = useSharedValue(1);
+  const twinkle3 = useSharedValue(1);
+
+  // ── Bottom moon float ─────────────────────────────────────────────────────
+  const moonFloat = useSharedValue(0);
+
+
   useEffect(() => {
     if (!checkedInToday) {
       glowOpacity.value = withRepeat(withTiming(1, { duration: 1400 }), -1, true);
@@ -238,6 +258,15 @@ export default function ClientHome() {
       floatY.value = withTiming(0, { duration: 400 });
     }
   }, [checkedInToday]);
+
+  useEffect(() => {
+    twinkle0.value = withRepeat(withTiming(0.2, { duration: 1300 }), -1, true);
+    twinkle1.value = withDelay(300, withRepeat(withTiming(0.15, { duration: 1600 }), -1, true));
+    twinkle2.value = withDelay(600, withRepeat(withTiming(0.25, { duration: 1050 }), -1, true));
+    twinkle3.value = withDelay(900, withRepeat(withTiming(0.1, { duration: 1800 }), -1, true));
+    moonFloat.value = withRepeat(withTiming(-6, { duration: 2200 }), -1, true);
+  }, []);
+
 
   // ── Parallax: header elements resist scroll at different rates ────────────
   // scrollY * -0.3 → top row moves at 70% of scroll speed (sticks slightly)
@@ -266,6 +295,18 @@ export default function ClientHome() {
     transform: [{ translateY: floatY.value }],
   }));
 
+  const twinkleStyle0 = useAnimatedStyle(() => ({ opacity: twinkle0.value }));
+  const twinkleStyle1 = useAnimatedStyle(() => ({ opacity: twinkle1.value }));
+  const twinkleStyle2 = useAnimatedStyle(() => ({ opacity: twinkle2.value }));
+  const twinkleStyle3 = useAnimatedStyle(() => ({ opacity: twinkle3.value }));
+  const twinkleStyles = [twinkleStyle0, twinkleStyle1, twinkleStyle2, twinkleStyle3];
+
+  const floatingMoonStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: moonFloat.value }],
+  }));
+
+
+
   // ── Calendar day tap ──────────────────────────────────────────────────────
   const handleDayPress = (dateStr) => {
     if (!entryDates.has(dateStr)) return;
@@ -287,13 +328,43 @@ export default function ClientHome() {
     );
   }
 
+  const starGroups = [0, 1, 2, 3].map(g => STARS.filter(s => s.group === g));
+
   return (
     <View style={styles.container}>
+      {/* Header extension — sits behind ScrollView, revealed on iOS overscroll.
+          Gradient fades from dark navy at top into the exact header blue at bottom
+          so it looks like the header simply continues upward. */}
+      <View style={styles.headerExtension} pointerEvents="none">
+        <LinearGradient
+          colors={['#0a0e1f', '#0d1535', '#1e2f7a', '#4361EE']}
+          style={StyleSheet.absoluteFill}
+        />
+        {starGroups.map((group, gi) => (
+          <Animated.View key={gi} style={[StyleSheet.absoluteFill, twinkleStyles[gi]]}>
+            {group.map(star => (
+              <View
+                key={star.id}
+                style={[styles.star, {
+                  left: `${star.x}%`,
+                  top: `${star.y * 0.72}%`,
+                  width: star.size,
+                  height: star.size,
+                  opacity: star.baseOpacity,
+                }]}
+              />
+            ))}
+          </Animated.View>
+        ))}
+        <Text style={styles.skyMoon}>🌙</Text>
+      </View>
+
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         bounces
+        style={{ backgroundColor: 'transparent' }}
       >
         {/* ── Blue gradient header (scrolls away naturally) ── */}
         <LinearGradient colors={GRADIENT} style={styles.gradient}>
@@ -486,51 +557,114 @@ export default function ClientHome() {
             ) : null}
           </View>
 
+          {/* Bottom easter egg — gradient fades from background into twilight */}
+          <LinearGradient
+            colors={[colors.background, '#DCE6F8', '#C8D6F0']}
+            style={styles.bottomEaster}
+          >
+            <Text style={styles.bottomTitle}>nothing to see here</Text>
+          </LinearGradient>
+
         </View>
       </Animated.ScrollView>
 
       {/* ── Streak modal ── */}
-      <Modal visible={streakModalOpen} transparent animationType="fade" onRequestClose={() => setStreakModalOpen(false)}>
-        <TouchableOpacity style={styles.streakOverlay} activeOpacity={1} onPress={() => setStreakModalOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <LinearGradient colors={['#FFE066', '#F59E0B', '#B45309']} style={styles.streakCard}>
-              <View style={styles.streakShine} />
-              <TouchableOpacity style={styles.streakClose} onPress={() => setStreakModalOpen(false)}>
-                <Ionicons name="close" size={20} color="rgba(255,255,255,0.7)" />
-              </TouchableOpacity>
-              <Ionicons name={trophyTier.name} size={100} color={trophyTier.color} style={styles.streakTrophy} />
-              <Text style={styles.streakMotivation}>{getMotivation(currentStreak)}</Text>
-              <View style={styles.streakPedestal}>
-                <View style={styles.streakPedestalRow}>
-                  <View style={styles.streakPedestalStat}>
-                    <Text style={styles.streakPedestalValue}>{currentStreak}</Text>
-                    <Text style={styles.streakPedestalLabel}>CURRENT STREAK</Text>
-                  </View>
-                  <View style={styles.streakPedestalDivider} />
-                  <View style={styles.streakPedestalStat}>
-                    <Text style={styles.streakPedestalValue}>{longestStreak}</Text>
-                    <Text style={styles.streakPedestalLabel}>LONGEST STREAK</Text>
-                  </View>
+      <Modal visible={streakModalOpen} transparent animationType="fade" onRequestClose={() => { setStreakModalOpen(false); setTierInfoVisible(false); }}>
+        <TouchableOpacity style={styles.streakOverlay} activeOpacity={1} onPress={() => { setStreakModalOpen(false); setTierInfoVisible(false); }}>
+          <View style={styles.streakCard}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+              <LinearGradient
+                colors={['#0d1535', '#162040']}
+                style={styles.streakCardInner}
+              >
+                {/* Tier color top accent bar */}
+                <View style={[styles.streakAccentBar, { backgroundColor: trophyTier.color }]} />
+
+                {/* Close button */}
+                <TouchableOpacity style={styles.streakClose} onPress={() => { setStreakModalOpen(false); setTierInfoVisible(false); }}>
+                  <Ionicons name="close" size={18} color="rgba(255,255,255,0.6)" />
+                </TouchableOpacity>
+
+                {/* Tier badge — tappable to see tier breakdown */}
+                <TouchableOpacity
+                  style={[styles.streakTierBadge, { backgroundColor: trophyTier.color + '22' }]}
+                  onPress={() => setTierInfoVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.streakTierBadgeText, { color: trophyTier.color }]}>
+                    ✦ {trophyTier.tier} ✦
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Trophy in glow circle */}
+                <View style={[styles.streakGlowCircle, { backgroundColor: trophyTier.color + '22' }]}>
+                  <Ionicons name={trophyTier.name} size={72} color={trophyTier.color} />
                 </View>
-                <View style={styles.streakPedestalRowDivider} />
-                <View style={styles.streakPedestalRow}>
-                  <View style={styles.streakPedestalStat}>
-                    <Text style={styles.streakPedestalValue}>{totalCheckIns}</Text>
-                    <Text style={styles.streakPedestalLabel}>TOTAL CHECK-INS</Text>
+
+                {/* Hero streak number */}
+                <Text style={[styles.streakHeroNumber, { color: trophyTier.color }]}>
+                  {currentStreak}
+                </Text>
+                <Text style={styles.streakHeroLabel}>DAY STREAK</Text>
+
+                {/* Motivational text */}
+                <Text style={styles.streakMotivation}>{getMotivation(currentStreak)}</Text>
+
+                {/* Divider */}
+                <View style={styles.streakDivider} />
+
+                {/* Stats row */}
+                <View style={styles.streakStatsRow}>
+                  <View style={styles.streakStatItem}>
+                    <Text style={[styles.streakStatValue, { color: trophyTier.color }]}>{longestStreak}</Text>
+                    <Text style={styles.streakStatLabel}>LONGEST</Text>
                   </View>
-                  <View style={styles.streakPedestalDivider} />
-                  <View style={styles.streakPedestalStat}>
-                    <Text style={styles.streakPedestalValue}>
+                  <View style={styles.streakStatDivider} />
+                  <View style={styles.streakStatItem}>
+                    <Text style={[styles.streakStatValue, { color: trophyTier.color }]}>{totalCheckIns}</Text>
+                    <Text style={styles.streakStatLabel}>CHECK-INS</Text>
+                  </View>
+                  <View style={styles.streakStatDivider} />
+                  <View style={styles.streakStatItem}>
+                    <Text style={[styles.streakStatValue, { color: trophyTier.color }]}>
                       {lastCheckInDate
                         ? new Date(lastCheckInDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                         : '—'}
                     </Text>
-                    <Text style={styles.streakPedestalLabel}>LAST CHECK-IN</Text>
+                    <Text style={styles.streakStatLabel}>LAST CHECK-IN</Text>
                   </View>
                 </View>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
+
+                {/* Tier info overlay */}
+                {tierInfoVisible && (
+                  <View style={styles.tierInfoOverlay}>
+                    <Text style={styles.tierInfoTitle}>Tier System</Text>
+                    <Text style={styles.tierInfoSubtitle}>Based on your current daily streak</Text>
+                    {[
+                      { color: '#9ca3af', label: 'No Streak',  range: '0 days' },
+                      { color: '#CD7F32', label: 'Bronze',     range: '1 – 6 days' },
+                      { color: '#C0C0C0', label: 'Silver',     range: '7 – 20 days' },
+                      { color: '#FFE066', label: 'Gold',       range: '21 – 49 days' },
+                      { color: '#B2EBF2', label: 'Platinum',   range: '50+ days' },
+                    ].map(t => (
+                      <View key={t.label} style={styles.tierInfoRow}>
+                        <View style={[styles.tierInfoDot, { backgroundColor: t.color }]} />
+                        <Text style={[styles.tierInfoLabel, { color: t.color }]}>{t.label}</Text>
+                        <Text style={styles.tierInfoRange}>{t.range}</Text>
+                      </View>
+                    ))}
+                    <Text style={styles.tierInfoNote}>
+                      Missing a day resets your streak back to 0.
+                    </Text>
+                    <TouchableOpacity style={[styles.tierInfoClose, { borderColor: trophyTier.color + '55' }]} onPress={() => setTierInfoVisible(false)}>
+                      <Text style={[styles.tierInfoCloseText, { color: trophyTier.color }]}>Got it</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
@@ -571,7 +705,27 @@ export default function ClientHome() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4361EE', // matches top of GRADIENT — hides overscroll bounce gap
+    backgroundColor: '#0a0e1f',
+  },
+  headerExtension: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT,
+    overflow: 'hidden',
+  },
+  star: {
+    position: 'absolute',
+    borderRadius: 99,
+    backgroundColor: '#ffffff',
+  },
+  skyMoon: {
+    position: 'absolute',
+    top: 28,
+    right: 28,
+    fontSize: 26,
+    opacity: 0.85,
   },
   centered: {
     flex: 1,
@@ -768,7 +922,28 @@ const styles = StyleSheet.create({
   entriesContainer: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
-    paddingBottom: 100,
+    paddingBottom: spacing.md,
+  },
+  bottomEaster: {
+    alignItems: 'center',
+    paddingTop: spacing.xl,
+    paddingBottom: 64,
+    gap: 6,
+  },
+  bottomMoon: {
+    fontSize: 40,
+  },
+  bottomTitle: {
+    fontSize: 13,
+    fontFamily: font.semibold,
+    color: colors.textSecondary,
+    letterSpacing: 1.5,
+    marginTop: spacing.xs,
+  },
+  bottomSub: {
+    fontSize: 12,
+    color: colors.border,
+    fontFamily: font.regular,
   },
   sectionTitle: {
     fontSize: 20,
@@ -862,90 +1037,116 @@ const styles = StyleSheet.create({
   // ── Streak modal ─────────────────────────────────────────────
   streakOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.xl,
   },
   streakCard: {
+    width: SCREEN_HEIGHT * 0.42,
     borderRadius: 28,
-    alignItems: 'center',
-    width: 300,
     overflow: 'hidden',
-    shadowColor: '#92400E',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.5,
-    shadowRadius: 32,
-    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.6,
+    shadowRadius: 40,
+    elevation: 24,
+  },
+  streakCardInner: {
+    alignItems: 'center',
     paddingTop: spacing.xl,
     paddingHorizontal: spacing.xl,
-    paddingBottom: 0,
+    paddingBottom: spacing.xl,
   },
-  streakShine: {
+  streakAccentBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 80,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    height: 3,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
   },
   streakClose: {
     position: 'absolute',
-    top: spacing.sm,
+    top: spacing.md,
     right: spacing.md,
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  streakTrophy: {
-    marginBottom: spacing.xs,
+  streakTierBadge: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: 5,
+    marginBottom: spacing.lg,
+    marginTop: spacing.xs,
+  },
+  streakTierBadgeText: {
+    fontSize: 10,
+    fontFamily: font.bold,
+    letterSpacing: 1.5,
+  },
+  streakGlowCircle: {
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  streakHeroNumber: {
+    fontSize: 62,
+    fontFamily: font.bold,
+    lineHeight: 68,
+  },
+  streakHeroLabel: {
+    fontSize: 11,
+    fontFamily: font.semibold,
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 2.5,
+    marginTop: 2,
+    marginBottom: spacing.sm,
   },
   streakMotivation: {
     fontSize: 15,
     fontFamily: font.semibold,
-    color: '#fff',
+    color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
     marginBottom: spacing.lg,
-    textShadowColor: 'rgba(0,0,0,0.2)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
-  streakPedestal: {
-    width: 300,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    marginHorizontal: -spacing.xl,
+  streakDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignSelf: 'stretch',
+    marginBottom: spacing.lg,
   },
-  streakPedestalRow: {
+  streakStatsRow: {
     flexDirection: 'row',
+    alignSelf: 'stretch',
   },
-  streakPedestalStat: {
+  streakStatItem: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    gap: 4,
   },
-  streakPedestalDivider: {
+  streakStatDivider: {
     width: 1,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    marginVertical: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginVertical: 4,
   },
-  streakPedestalRowDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    marginHorizontal: spacing.lg,
-  },
-  streakPedestalValue: {
-    fontSize: 28,
+  streakStatValue: {
+    fontSize: 20,
     fontFamily: font.bold,
-    color: '#FFE066',
   },
-  streakPedestalLabel: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.65)',
+  streakStatLabel: {
+    fontSize: 8,
+    fontFamily: font.semibold,
+    color: 'rgba(255,255,255,0.4)',
     letterSpacing: 0.8,
-    marginTop: 2,
     textAlign: 'center',
   },
 
@@ -1043,6 +1244,76 @@ const styles = StyleSheet.create({
   },
   menuItemLabelActive: {
     color: colors.primary,
+    fontFamily: font.semibold,
+  },
+
+  // ── Tier info overlay ─────────────────────────────────────────
+  tierInfoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#0d1535',
+    borderRadius: 28,
+    padding: spacing.xl,
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  tierInfoTitle: {
+    fontSize: 18,
+    fontFamily: font.bold,
+    color: colors.white,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  tierInfoSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'center',
+    fontFamily: font.regular,
+    marginBottom: spacing.sm,
+  },
+  tierInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
+  },
+  tierInfoDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  tierInfoLabel: {
+    fontSize: 14,
+    fontFamily: font.semibold,
+    flex: 1,
+  },
+  tierInfoRange: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    fontFamily: font.regular,
+  },
+  tierInfoNote: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.3)',
+    textAlign: 'center',
+    fontFamily: font.regular,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  tierInfoClose: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  tierInfoCloseText: {
+    fontSize: 14,
     fontFamily: font.semibold,
   },
 });
