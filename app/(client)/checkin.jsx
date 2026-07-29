@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -481,9 +483,13 @@ export default function CheckInScreen() {
     if (slideIndex === REFLECT_STEP) {
       return (
         <GestureDetector key="reflect" gesture={reflectGesture}>
-          <View style={{ flex: 1 }}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={insets.top + 70}
+          >
             <ScrollView
-              contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+              contentContainerStyle={[styles.scroll, { paddingBottom: spacing.lg }]}
               keyboardShouldPersistTaps="handled"
             >
               <Text style={styles.stepTitle}>Reflect</Text>
@@ -511,7 +517,6 @@ export default function CheckInScreen() {
                 />
               </View>
             </ScrollView>
-            {/* Floating save button — no swipe-left to advance, must tap */}
             <View style={[styles.saveWrap, { paddingBottom: insets.bottom + 16 }]}>
               <TouchableOpacity
                 style={[styles.saveBtn, loading && styles.nextBtnDisabled]}
@@ -524,7 +529,7 @@ export default function CheckInScreen() {
                 }
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </GestureDetector>
       );
     }
@@ -536,7 +541,16 @@ export default function CheckInScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header — zIndex keeps it above the fill overflow at max value */}
       <View style={[styles.header, { zIndex: 10 }]}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() =>
+          Alert.alert(
+            'Exit Check-in?',
+            'Your progress will not be saved.',
+            [
+              { text: 'Keep Going', style: 'cancel' },
+              { text: 'Exit', style: 'destructive', onPress: () => router.back() },
+            ]
+          )
+        }>
           <Text style={styles.cancel}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Daily Check-in</Text>
@@ -634,12 +648,8 @@ const styles = StyleSheet.create({
   },
   journalInput: { minHeight: 150, paddingTop: spacing.md },
 
-  // Reflect — floating save button
   saveWrap: {
-    position: 'absolute',
-    bottom: 0,
-    left: spacing.lg,
-    right: spacing.lg,
+    paddingHorizontal: spacing.lg,
   },
   saveBtn: {
     backgroundColor: colors.primary,
