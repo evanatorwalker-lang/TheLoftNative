@@ -443,6 +443,21 @@ export const getClientSuicidalFlag = async (therapistId, clientId) => {
 };
 
 /**
+ * Write a client-visible message onto an entry document
+ */
+export const setClientMessage = async (entryId, message) => {
+  try {
+    await updateDoc(doc(db, 'entries', entryId), {
+      therapistMessage: message,
+      therapistMessageAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Set client message error:', error);
+    throw error;
+  }
+};
+
+/**
  * Remove a label from a client
  * @param {string} therapistId - Therapist's user ID
  * @param {string} clientId - Client's user ID

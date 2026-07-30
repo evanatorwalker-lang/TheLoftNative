@@ -36,6 +36,8 @@ export const createEntry = async (entryData, userId, therapistId) => {
       focus: entryData.focus,
       motivation: entryData.motivation,
       sleepHours: entryData.sleepHours,
+      bedTime: entryData.bedTime,
+      wakeTime: entryData.wakeTime,
       wordOfDay: entryData.wordOfDay || '',
       activities: entryData.activities || [],
       journal: entryData.journal || '',

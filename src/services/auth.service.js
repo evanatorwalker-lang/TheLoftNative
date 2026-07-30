@@ -17,7 +17,7 @@ import { auth, db } from './firebase';
  * @param {string} role - User role ('client' or 'therapist')
  * @returns {Promise<Object>} User object with role
  */
-export const signUp = async (email, password, displayName, role) => {
+export const signUp = async (email, password, displayName, role, notificationTime = '09:00') => {
   try {
     // Create Firebase auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -39,6 +39,9 @@ export const signUp = async (email, password, displayName, role) => {
       userData.pairingCode = generatePairingCode();
     } else if (role === 'client') {
       userData.connectionMode = 'solo';
+      userData.notificationTime = notificationTime;
+      userData.notificationsEnabled = true;
+      userData.therapistMessageNotif = true;
     }
 
     await setDoc(doc(db, 'users', user.uid), userData);

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChange } from '../services/auth.service';
+import { reschedule, cancelAllNotifications, registerPushToken } from '../services/notification.service';
 
 const AppContext = createContext();
 
@@ -18,7 +19,16 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChange((user) => {
-      setCurrentUser(user);
+      setCurrentUser(prev => {
+        // Reschedule when a client logs in; cancel when anyone logs out
+        if (user?.role === 'client' && user.notificationsEnabled !== false) {
+          reschedule(user.notificationTime || '09:00').catch(() => {});
+          registerPushToken(user.uid).catch(() => {});
+        } else if (!user && prev) {
+          cancelAllNotifications().catch(() => {});
+        }
+        return user;
+      });
       setLoading(false);
     });
     return unsubscribe;

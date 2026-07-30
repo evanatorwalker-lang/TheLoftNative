@@ -15,9 +15,24 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { signUp } from '../../src/services/auth.service';
 import { linkClientToTherapist, validatePairingCode } from '../../src/services/pairing.service';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { requestPermissions, scheduleDailyReminder, scheduleStreakRisk } from '../../src/services/notification.service';
 import { colors, spacing, radius, font } from '../../src/theme';
 
-const STEPS = ['Details', 'Role', 'Connect'];
+const STEPS = ['Details', 'Role', 'Connect', 'Notifications'];
+
+const timeStringToDate = (str) => {
+  const [hour, minute] = str.split(':').map(Number);
+  const d = new Date();
+  d.setHours(hour, minute, 0, 0);
+  return d;
+};
+
+const dateToTimeString = (date) => {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+};
 
 export default function SignupScreen() {
   const [step, setStep] = useState(0);
@@ -27,10 +42,12 @@ export default function SignupScreen() {
   const [role, setRole] = useState(null);
   const [pairingCode, setPairingCode] = useState('');
   const [connectionChoice, setConnectionChoice] = useState(null); // 'solo' | 'therapist'
+  const [reminderTime, setReminderTime] = useState('09:00');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const goNext = () => setStep(s => Math.min(s + 1, 2));
+  const lastStep = role === 'client' ? 3 : 2;
+  const goNext = () => setStep(s => Math.min(s + 1, lastStep));
   const goBack = () => setStep(s => Math.max(s - 1, 0));
 
   const validateStep0 = () => {
@@ -67,13 +84,22 @@ export default function SignupScreen() {
 
     setLoading(true);
     try {
-      const user = await signUp(email.trim(), password, displayName.trim(), role);
+      const user = await signUp(email.trim(), password, displayName.trim(), role, reminderTime);
 
       if (role === 'client' && connectionChoice === 'therapist' && pairingCode.trim()) {
         await linkClientToTherapist(user.uid, pairingCode.trim(), {
           displayName: user.displayName,
           email: user.email,
         });
+      }
+
+      // Set up notifications for clients
+      if (role === 'client') {
+        const granted = await requestPermissions();
+        if (granted) {
+          await scheduleDailyReminder(reminderTime);
+          await scheduleStreakRisk();
+        }
       }
 
       Alert.alert(
@@ -106,7 +132,7 @@ export default function SignupScreen() {
 
         {/* Step dots */}
         <View style={styles.dots}>
-          {STEPS.map((_, i) => (
+          {STEPS.slice(0, lastStep + 1).map((_, i) => (
             <View
               key={i}
               style={[styles.dot, i <= step && styles.dotActive]}
@@ -182,6 +208,21 @@ export default function SignupScreen() {
             </View>
           )}
 
+          {step === 3 && (
+            <View>
+              <Text style={styles.stepTitle}>Daily reminder</Text>
+              <Text style={styles.stepDesc}>Pick a time and we'll nudge you to check in every day.</Text>
+              <DateTimePicker
+                value={timeStringToDate(reminderTime)}
+                mode="time"
+                display="spinner"
+                onChange={(_, date) => { if (date) setReminderTime(dateToTimeString(date)); }}
+                style={{ width: '100%' }}
+              />
+              <Text style={notifStyles.hint}>You can change this anytime in Settings.</Text>
+            </View>
+          )}
+
           {step === 2 && (
             <View>
               {role === 'client' ? (
@@ -241,7 +282,7 @@ export default function SignupScreen() {
                 <Text style={styles.backButtonText}>Back</Text>
               </TouchableOpacity>
             )}
-            {step < 2 ? (
+            {step < lastStep ? (
               <TouchableOpacity
                 style={[styles.button, step === 0 && styles.buttonFull]}
                 onPress={handleNext}
@@ -445,5 +486,14 @@ const styles = StyleSheet.create({
   linkBold: {
     color: colors.primary,
     fontWeight: String(font.semibold),
+  },
+});
+
+const notifStyles = StyleSheet.create({
+  hint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
   },
 });

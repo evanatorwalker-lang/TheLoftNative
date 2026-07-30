@@ -9,10 +9,15 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
+import { reschedule, cancelAllNotifications } from '../../src/services/notification.service';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const NAV_ITEMS = [
   { label: 'Home',     icon: 'home-outline',     route: '/(client)/' },
@@ -31,6 +36,75 @@ export default function SettingsScreen() {
   const [linking, setLinking] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [notifEnabled, setNotifEnabled] = useState(currentUser?.notificationsEnabled !== false);
+  const [notifTime, setNotifTime] = useState(currentUser?.notificationTime || '09:00');
+  const [therapistMsgNotif, setTherapistMsgNotif] = useState(currentUser?.therapistMessageNotif !== false);
+
+  const timeStringToDate = (str) => {
+    const [hour, minute] = str.split(':').map(Number);
+    const d = new Date();
+    d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+
+  const dateToTimeString = (date) => {
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const formatTime = (str) => {
+    const [hour, minute] = str.split(':').map(Number);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const h = hour % 12 || 12;
+    return `${h}:${String(minute).padStart(2, '0')} ${ampm}`;
+  };
+
+  const saveNotifPrefs = async (enabled, time) => {
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        notificationsEnabled: enabled,
+        notificationTime: time,
+      });
+      updateUser({ notificationsEnabled: enabled, notificationTime: time });
+      if (enabled) {
+        await reschedule(time);
+      } else {
+        await cancelAllNotifications();
+      }
+    } catch {
+      Alert.alert('Error', 'Could not save notification preferences.');
+    }
+  };
+
+  const handleToggleNotif = async (value) => {
+    setNotifEnabled(value);
+    await saveNotifPrefs(value, notifTime);
+  };
+
+  const handleToggleTherapistMsgNotif = async (value) => {
+    setTherapistMsgNotif(value);
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), { therapistMessageNotif: value });
+      updateUser({ therapistMessageNotif: value });
+    } catch {
+      Alert.alert('Error', 'Could not save preference.');
+      setTherapistMsgNotif(!value);
+    }
+  };
+
+  const handleTimeChange = (_, date) => {
+    if (!date) return;
+    const newTime = dateToTimeString(date);
+    setNotifTime(newTime);
+  };
+
+  const handleTimeConfirm = async () => {
+    setTimePickerOpen(false);
+    if (notifEnabled) await saveNotifPrefs(true, notifTime);
+  };
+
 
   const handleLinkTherapist = async () => {
     const trimmedCode = pairingCode.trim().toUpperCase();
@@ -124,6 +198,42 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Notifications */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Daily reminder</Text>
+              <Switch
+                value={notifEnabled}
+                onValueChange={handleToggleNotif}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.white}
+              />
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Therapist messages</Text>
+              <Switch
+                value={therapistMsgNotif}
+                onValueChange={handleToggleTherapistMsgNotif}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.white}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.row, !notifEnabled && { opacity: 0.4 }]}
+              onPress={() => notifEnabled && setTimePickerOpen(true)}
+              disabled={!notifEnabled}
+            >
+              <Text style={styles.rowLabel}>Reminder time</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.rowValue}>{formatTime(notifTime)}</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Therapist connection */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Therapist Connection</Text>
@@ -188,6 +298,26 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Time picker modal */}
+      <Modal visible={timePickerOpen} transparent animationType="slide" onRequestClose={() => setTimePickerOpen(false)}>
+        <View style={{ flex: 1 }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setTimePickerOpen(false)} />
+          <View style={notifStyles.sheet}>
+            <Text style={notifStyles.sheetTitle}>Reminder Time</Text>
+            <DateTimePicker
+              value={timeStringToDate(notifTime)}
+              mode="time"
+              display="spinner"
+              onChange={handleTimeChange}
+              style={{ width: '100%' }}
+            />
+            <TouchableOpacity style={notifStyles.confirmBtn} onPress={handleTimeConfirm}>
+              <Text style={notifStyles.confirmBtnText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
@@ -365,6 +495,42 @@ const styles = StyleSheet.create({
   },
   dangerButtonText: {
     color: colors.error,
+    fontSize: 16,
+    fontWeight: String(font.semibold),
+  },
+});
+
+const notifStyles = StyleSheet.create({
+  sheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: String(font.semibold),
+    color: colors.text,
+    textAlign: 'center',
+    paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  confirmBtn: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  confirmBtnText: {
+    color: colors.white,
     fontSize: 16,
     fontWeight: String(font.semibold),
   },

@@ -14,6 +14,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc } from 'firebase/firestore';
+import { sendTherapistMessageNotif } from '../../../src/services/notification.service';
 import { db } from '../../../src/services/firebase';
 import { useApp } from '../../../src/context/AppContext';
 import { useClientDetails } from '../../../src/hooks/useClientDetails';
@@ -26,6 +27,7 @@ import {
   deleteClientNote,
   addClientLabel,
   removeClientLabel,
+  setClientMessage,
 } from '../../../src/services/therapist.service';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -296,6 +298,9 @@ export default function ClientDetailsScreen() {
   const [noteFocused, setNoteFocused]                  = useState(false);
   const [savingNote, setSavingNote]                    = useState(false);
   const [clientLabels, setClientLabels]                = useState([]);
+  const [editingMessageForEntry, setEditingMessageForEntry] = useState(null);
+  const [messageText, setMessageText]                  = useState('');
+  const [savingMessage, setSavingMessage]              = useState(false);
 
   const flatListRef = useRef(null);
 
@@ -346,6 +351,21 @@ export default function ClientDetailsScreen() {
       Alert.alert('Error', 'Failed to save note. Please try again.');
     } finally {
       setSavingNote(false);
+    }
+  };
+
+  const handleSaveMessage = async (entryId) => {
+    setSavingMessage(true);
+    try {
+      const trimmed = messageText.trim();
+      await setClientMessage(entryId, trimmed);
+      sendTherapistMessageNotif(id, trimmed).catch(() => {});
+      setEditingMessageForEntry(null);
+      setMessageText('');
+    } catch {
+      Alert.alert('Error', 'Failed to send message.');
+    } finally {
+      setSavingMessage(false);
     }
   };
 
@@ -481,6 +501,62 @@ export default function ClientDetailsScreen() {
                       <Text style={styles.journal}>{entry.journal}</Text>
                     </View>
                   ) : null}
+
+                  <View style={styles.notesDivider} />
+
+                  {/* Client-visible message */}
+                  <View style={styles.notesHeader}>
+                    <Text style={styles.notesLabel}>Message to Client</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditingMessageForEntry(entry.id);
+                        setMessageText(entry.therapistMessage || '');
+                      }}
+                      style={styles.addNoteBtn}
+                    >
+                      <Text style={styles.addNoteBtnText}>
+                        {entry.therapistMessage ? 'Edit' : '+ Add'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {entry.therapistMessage && editingMessageForEntry !== entry.id && (
+                    <View style={msgStyles.bubble}>
+                      <Text style={msgStyles.bubbleText}>{entry.therapistMessage}</Text>
+                    </View>
+                  )}
+
+                  {editingMessageForEntry === entry.id && (
+                    <View style={[styles.noteInputWrap, { borderColor: '#10b981' }]}>
+                      <TextInput
+                        style={styles.noteInput}
+                        placeholder="Write a message your client will see..."
+                        placeholderTextColor="#9CA3AF"
+                        value={messageText}
+                        onChangeText={setMessageText}
+                        multiline
+                        autoFocus
+                        textAlignVertical="top"
+                      />
+                      <View style={styles.noteInputActions}>
+                        <TouchableOpacity
+                          onPress={() => { setEditingMessageForEntry(null); setMessageText(''); }}
+                          style={styles.noteCancelBtnWrap}
+                        >
+                          <Text style={styles.noteCancelBtn}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[msgStyles.sendBtn, savingMessage && { opacity: 0.6 }]}
+                          onPress={() => handleSaveMessage(entry.id)}
+                          disabled={savingMessage}
+                        >
+                          <Text style={styles.noteSaveBtnText}>
+                            {savingMessage ? 'Sending...' : 'Send'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
 
                   <View style={styles.notesDivider} />
 
@@ -988,4 +1064,22 @@ const styles = StyleSheet.create({
   noteCancelBtn: { fontSize: 13, color: GRAY },
   noteSaveBtn: { backgroundColor: BLUE, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 6 },
   noteSaveBtnText: { fontSize: 13, color: '#fff', fontWeight: String(font.bold) },
+});
+
+const msgStyles = StyleSheet.create({
+  bubble: {
+    backgroundColor: '#ECFDF5',
+    borderLeftWidth: 3,
+    borderLeftColor: '#10b981',
+    borderRadius: 6,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  bubbleText: { fontSize: 13, color: '#065f46', lineHeight: 18 },
+  sendBtn: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 6,
+  },
 });

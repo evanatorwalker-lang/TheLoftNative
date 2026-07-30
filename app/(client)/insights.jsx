@@ -74,9 +74,20 @@ export default function InsightsScreen() {
 
         {entries.length === 0 ? (
           <View style={styles.empty}>
-            <Ionicons name="bar-chart-outline" size={48} color={colors.primary} style={{ marginBottom: spacing.md }} />
-            <Text style={styles.emptyTitle}>No data yet</Text>
-            <Text style={styles.emptyDesc}>Complete your first check-in to see insights here.</Text>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="sparkles-outline" size={40} color={colors.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>Your story starts here</Text>
+            <Text style={styles.emptyDesc}>
+              Do your first check-in and your mood trends, focus scores, and history will all show up right here.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => router.push('/(client)/checkin')}
+            >
+              <Ionicons name="add-circle-outline" size={18} color={colors.white} />
+              <Text style={styles.emptyBtnText}>Start your first check-in</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <>
@@ -273,9 +284,44 @@ const styles = StyleSheet.create({
   empty: {
     alignItems: 'center',
     paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
   },
-  emptyTitle: { fontSize: 18, fontFamily: font.semibold, color: colors.text },
-  emptyDesc: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'center' },
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: font.bold,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  emptyDesc: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: spacing.xl,
+  },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyBtnText: {
+    color: colors.white,
+    fontSize: 15,
+    fontFamily: font.semibold,
+  },
   entryCard: {
     backgroundColor: colors.white,
     borderRadius: radius.md,

@@ -180,6 +180,12 @@ function EntryCard({ entry, index, isExpanded, onToggle }) {
                 )}
               </View>
             )}
+            {!!entry.therapistMessage && (
+              <View style={styles.therapistMsg}>
+                <Text style={styles.therapistMsgLabel}>From your therapist</Text>
+                <Text style={styles.therapistMsgText}>{entry.therapistMessage}</Text>
+              </View>
+            )}
           </>
         )}
 
@@ -1026,6 +1032,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.white,
     fontFamily: font.medium,
+  },
+  therapistMsg: {
+    marginTop: spacing.sm,
+    backgroundColor: '#ECFDF5',
+    borderLeftWidth: 3,
+    borderLeftColor: '#10b981',
+    borderRadius: 6,
+    padding: spacing.sm,
+  },
+  therapistMsgLabel: {
+    fontSize: 10,
+    color: '#059669',
+    fontFamily: font.semibold,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  therapistMsgText: {
+    fontSize: 13,
+    color: '#065f46',
+    lineHeight: 18,
   },
   emptyText: {
     textAlign: 'center',

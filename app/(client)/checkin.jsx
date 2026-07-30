@@ -12,6 +12,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,8 +27,11 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '../../src/context/AppContext';
 import { createEntry, getTodayEntries } from '../../src/services/entry.service';
+import { scheduleStreakRisk } from '../../src/services/notification.service';
 import { getClientSuicidalFlag } from '../../src/services/therapist.service';
 import { colors, spacing, radius, font } from '../../src/theme';
 
@@ -72,8 +76,41 @@ const BASE_SLIDER_STEPS = [
   { key: 'emotions',   min: 1,  max: 10, leftLabel: 'Super Steady', rightLabel: 'Rollercoaster', subtitle: 'Emotional stability',   colorLow: GREEN, colorHigh: RED   }, // high = bad
   { key: 'focus',      min: 1,  max: 10, leftLabel: 'Zoned Out',    rightLabel: 'Locked In',     subtitle: 'Concentration & focus', colorLow: RED,   colorHigh: GREEN }, // high = good
   { key: 'motivation', min: 1,  max: 10, leftLabel: 'No Gas',       rightLabel: 'Full Tank',     subtitle: 'Drive & energy',        colorLow: RED,   colorHigh: GREEN }, // high = good
-  { key: 'sleepHours', min: 0,  max: 12, leftLabel: 'No Sleep',     rightLabel: '12+ hrs', unit: ' hrs', subtitle: 'Hours slept last night', colorLow: RED, colorHigh: GREEN }, // high = good
 ];
+
+// ─────────────────────────────────────────────────────────────
+// Sleep time helpers
+// ─────────────────────────────────────────────────────────────
+const timeStringToDate = (str) => {
+  const [hour, minute] = str.split(':').map(Number);
+  const d = new Date();
+  d.setHours(hour, minute, 0, 0);
+  return d;
+};
+
+const dateToTimeString = (date) => {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+};
+
+const formatTime = (str) => {
+  const [hour, minute] = str.split(':').map(Number);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h = hour % 12 || 12;
+  return `${h}:${String(minute).padStart(2, '0')} ${ampm}`;
+};
+
+// Hours between bedtime and wake time, wrapping past midnight
+const computeSleepHours = (bedTime, wakeTime) => {
+  const toMinutes = (t) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  let diff = toMinutes(wakeTime) - toMinutes(bedTime);
+  if (diff <= 0) diff += 24 * 60;
+  return Math.min(12, Math.round((diff / 60) * 10) / 10);
+};
 
 // Inserted at index 3 (after mood, stress, worry) when therapist flags client as suicidal risk
 const SUICIDAL_IDEATION_STEP = {
@@ -158,6 +195,7 @@ function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizon
         if (newVal !== lastEmittedValue.current) {
           lastEmittedValue.current = newVal;
           onChange(newVal);
+          Haptics.selectionAsync();
         }
       } else if (gestureMode.current === 'horizontal') {
         // Live feedback: update strip position as finger moves
@@ -294,25 +332,26 @@ export default function CheckInScreen() {
   }, [currentUser?.uid]);
 
   // Build active slider steps — insert SI step at index 3 (after worry) when flagged
-  // For subsequent check-ins, skip the sleep step (already captured earlier today)
-  const sliderSteps = isSuicidalFlagged
+  const activeSteps = isSuicidalFlagged
     ? [...BASE_SLIDER_STEPS.slice(0, 3), SUICIDAL_IDEATION_STEP, ...BASE_SLIDER_STEPS.slice(3)]
     : BASE_SLIDER_STEPS;
-  const activeSteps = isSubsequent
-    ? sliderSteps.filter(s => s.key !== 'sleepHours')
-    : sliderSteps;
 
-  const ACTIVITIES_STEP = activeSteps.length;
-  const REFLECT_STEP    = activeSteps.length + 1;
-  const TOTAL_STEPS     = activeSteps.length + 2;
+  // For subsequent check-ins, skip the sleep step (already captured earlier today)
+  const includeSleep = !isSubsequent;
+
+  const SLEEP_STEP      = activeSteps.length;
+  const ACTIVITIES_STEP = activeSteps.length + (includeSleep ? 1 : 0);
+  const REFLECT_STEP    = ACTIVITIES_STEP + 1;
+  const TOTAL_STEPS     = REFLECT_STEP + 1;
 
   const [values, setValues] = useState({
     mood: 5, stress: 5, worry: 5, suicidalIdeation: 5, emotions: 5,
-    focus: 5, motivation: 5, sleepHours: 7,
+    focus: 5, motivation: 5, bedTime: '23:00', wakeTime: '07:00',
   });
   const [activities, setActivities] = useState([]);
   const [wordOfDay, setWordOfDay]   = useState('');
   const [journal, setJournal]       = useState('');
+  const [sleepField, setSleepField] = useState(null); // 'bedTime' | 'wakeTime' | null
 
   const setVal = (key) => (v) => setValues(prev => ({ ...prev, [key]: v }));
   const toggleActivity = (id) =>
@@ -320,19 +359,31 @@ export default function CheckInScreen() {
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
 
+  const handleSleepTimeChange = (_, date) => {
+    if (!date || !sleepField) return;
+    const field = sleepField;
+    setValues(prev => ({ ...prev, [field]: dateToTimeString(date) }));
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      const sleepHours = computeSleepHours(values.bedTime, values.wakeTime);
       await createEntry(
-        { ...values, activities, wordOfDay, journal },
+        { ...values, sleepHours, activities, wordOfDay, journal },
         currentUser?.uid,
         currentUser?.therapistId || null
       );
+      scheduleStreakRisk().catch(() => {}); // reset the 8pm nudge for tomorrow
       Alert.alert('Done!', 'Check-in saved.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch {
-      Alert.alert('Error', 'Failed to save. Please try again.');
+      Alert.alert(
+        'Saved Offline',
+        "You appear to be offline. Your check-in has been saved and will sync automatically when you're back online.",
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
     } finally {
       setLoading(false);
     }
@@ -438,6 +489,45 @@ export default function CheckInScreen() {
           onHorizontalMove={handleHorizontalMove}
           onHorizontalEnd={handleHorizontalEnd}
         />
+      );
+    }
+
+    if (includeSleep && slideIndex === SLEEP_STEP) {
+      const sleepHours = computeSleepHours(values.bedTime, values.wakeTime);
+      return (
+        <GestureDetector key="sleep" gesture={reflectGesture}>
+          <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg }}>
+            <Text style={styles.stepTitle}>Sleep</Text>
+            <Text style={styles.subLabel}>How much did you sleep last night?</Text>
+
+            <TouchableOpacity style={styles.sleepRow} onPress={() => setSleepField('bedTime')}>
+              <View style={styles.sleepRowLeft}>
+                <Ionicons name="moon-outline" size={20} color={colors.textSecondary} />
+                <Text style={styles.sleepRowLabel}>Went to sleep</Text>
+              </View>
+              <View style={styles.sleepRowRight}>
+                <Text style={styles.sleepRowValue}>{formatTime(values.bedTime)}</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sleepRow} onPress={() => setSleepField('wakeTime')}>
+              <View style={styles.sleepRowLeft}>
+                <Ionicons name="sunny-outline" size={20} color={colors.textSecondary} />
+                <Text style={styles.sleepRowLabel}>Woke up</Text>
+              </View>
+              <View style={styles.sleepRowRight}>
+                <Text style={styles.sleepRowValue}>{formatTime(values.wakeTime)}</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.sleepTotalWrap}>
+              <Text style={styles.sleepTotalValue}>{sleepHours}</Text>
+              <Text style={styles.sleepTotalLabel}>hours of sleep</Text>
+            </View>
+          </View>
+        </GestureDetector>
       );
     }
 
@@ -587,6 +677,35 @@ export default function CheckInScreen() {
           })}
         </Animated.View>
       </View>
+
+      {/* Sleep time picker sheet */}
+      <Modal
+        visible={!!sleepField}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSleepField(null)}
+      >
+        <View style={{ flex: 1 }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setSleepField(null)} />
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
+            <Text style={styles.sheetTitle}>
+              {sleepField === 'bedTime' ? 'Went to Sleep' : 'Woke Up'}
+            </Text>
+            {sleepField && (
+              <DateTimePicker
+                value={timeStringToDate(values[sleepField])}
+                mode="time"
+                display="spinner"
+                onChange={handleSleepTimeChange}
+                style={{ width: '100%' }}
+              />
+            )}
+            <TouchableOpacity style={styles.confirmBtn} onPress={() => setSleepField(null)}>
+              <Text style={styles.confirmBtnText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -659,4 +778,50 @@ const styles = StyleSheet.create({
   },
   saveBtnText:     { color: colors.white, fontSize: 16, fontFamily: font.semibold },
   nextBtnDisabled: { opacity: 0.7 },
+
+  // Sleep step
+  sleepRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 16,
+    marginTop: spacing.md,
+  },
+  sleepRowLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sleepRowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sleepRowLabel: { fontSize: 16, fontFamily: font.medium, color: colors.text },
+  sleepRowValue: { fontSize: 16, color: colors.textSecondary },
+  sleepTotalWrap: { alignItems: 'center', marginTop: spacing.xl },
+  sleepTotalValue: { fontSize: 48, fontFamily: font.bold, color: colors.text },
+  sleepTotalLabel: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+
+  // Sleep time picker sheet
+  sheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    alignItems: 'center',
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontFamily: font.semibold,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  confirmBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 14,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginTop: spacing.md,
+  },
+  confirmBtnText: { color: colors.white, fontSize: 16, fontFamily: font.semibold },
 });
