@@ -10,9 +10,14 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { doc, getDoc } from 'firebase/firestore';
 import { sendTherapistMessageNotif } from '../../../src/services/notification.service';
 import { db } from '../../../src/services/firebase';
@@ -30,7 +35,8 @@ import {
   setClientMessage,
 } from '../../../src/services/therapist.service';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const COMPOSE_DISMISS_THRESHOLD = 140;
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -295,12 +301,12 @@ export default function ClientDetailsScreen() {
   const [notes, setNotes]                              = useState([]);
   const [addingNoteForEntry, setAddingNoteForEntry]    = useState(null);
   const [noteText, setNoteText]                        = useState('');
-  const [noteFocused, setNoteFocused]                  = useState(false);
   const [savingNote, setSavingNote]                    = useState(false);
   const [clientLabels, setClientLabels]                = useState([]);
   const [editingMessageForEntry, setEditingMessageForEntry] = useState(null);
   const [messageText, setMessageText]                  = useState('');
   const [savingMessage, setSavingMessage]              = useState(false);
+  const composeSheetY = useSharedValue(0);
 
   const flatListRef = useRef(null);
 
@@ -368,6 +374,53 @@ export default function ClientDetailsScreen() {
       setSavingMessage(false);
     }
   };
+
+  const closeComposer = () => {
+    composeSheetY.value = 0;
+    setEditingMessageForEntry(null);
+    setMessageText('');
+    setAddingNoteForEntry(null);
+    setNoteText('');
+  };
+
+  const composeSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: composeSheetY.value }],
+  }));
+
+  const requestCloseComposer = () => {
+    Alert.alert(
+      'Continue editing?',
+      '',
+      [
+        { text: 'No', style: 'destructive', onPress: closeComposer },
+        { text: 'Yes', onPress: () => {} },
+      ]
+    );
+  };
+
+  const composeDragGesture = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetY(20)
+    .onUpdate((e) => {
+      if (e.translationY > 0) {
+        composeSheetY.value = e.translationY;
+      }
+    })
+    .onEnd((e) => {
+      if (e.translationY > COMPOSE_DISMISS_THRESHOLD) {
+        composeSheetY.value = withTiming(SCREEN_H, { duration: 200 });
+        Alert.alert(
+          'Continue editing?',
+          '',
+          [
+            { text: 'No', style: 'destructive', onPress: closeComposer },
+            { text: 'Yes', onPress: () => { composeSheetY.value = withTiming(0, { duration: 200 }); } },
+          ]
+        );
+      } else {
+        composeSheetY.value = withTiming(0, { duration: 200 });
+      }
+    });
 
   const handleDeleteNote = (noteId) => {
     Alert.alert('Delete Note', 'Are you sure you want to delete this note?', [
@@ -509,6 +562,7 @@ export default function ClientDetailsScreen() {
                     <Text style={styles.notesLabel}>Message to Client</Text>
                     <TouchableOpacity
                       onPress={() => {
+                        setAddingNoteForEntry(null);
                         setEditingMessageForEntry(entry.id);
                         setMessageText(entry.therapistMessage || '');
                       }}
@@ -526,51 +580,23 @@ export default function ClientDetailsScreen() {
                     </View>
                   )}
 
-                  {editingMessageForEntry === entry.id && (
-                    <View style={[styles.noteInputWrap, { borderColor: '#10b981' }]}>
-                      <TextInput
-                        style={styles.noteInput}
-                        placeholder="Write a message your client will see..."
-                        placeholderTextColor="#9CA3AF"
-                        value={messageText}
-                        onChangeText={setMessageText}
-                        multiline
-                        autoFocus
-                        textAlignVertical="top"
-                      />
-                      <View style={styles.noteInputActions}>
-                        <TouchableOpacity
-                          onPress={() => { setEditingMessageForEntry(null); setMessageText(''); }}
-                          style={styles.noteCancelBtnWrap}
-                        >
-                          <Text style={styles.noteCancelBtn}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[msgStyles.sendBtn, savingMessage && { opacity: 0.6 }]}
-                          onPress={() => handleSaveMessage(entry.id)}
-                          disabled={savingMessage}
-                        >
-                          <Text style={styles.noteSaveBtnText}>
-                            {savingMessage ? 'Sending...' : 'Send'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-
                   <View style={styles.notesDivider} />
 
                   <View style={styles.notesHeader}>
                     <Text style={styles.notesLabel}>Therapist Notes</Text>
                     <TouchableOpacity
-                      onPress={() => { setAddingNoteForEntry(entry.id); setNoteText(''); }}
+                      onPress={() => {
+                        setEditingMessageForEntry(null);
+                        setAddingNoteForEntry(entry.id);
+                        setNoteText('');
+                      }}
                       style={styles.addNoteBtn}
                     >
                       <Text style={styles.addNoteBtnText}>+ Add Note</Text>
                     </TouchableOpacity>
                   </View>
 
-                  {notesForEntry.length === 0 && addingNoteForEntry !== entry.id && (
+                  {notesForEntry.length === 0 && (
                     <Text style={styles.noNotesText}>No notes yet.</Text>
                   )}
 
@@ -585,40 +611,6 @@ export default function ClientDetailsScreen() {
                       <Text style={styles.noteItemText}>{note.content}</Text>
                     </View>
                   ))}
-
-                  {addingNoteForEntry === entry.id && (
-                    <View style={[styles.noteInputWrap, noteFocused && styles.noteInputWrapFocused]}>
-                      <TextInput
-                        style={styles.noteInput}
-                        placeholder="Add a clinical note..."
-                        placeholderTextColor="#9CA3AF"
-                        value={noteText}
-                        onChangeText={setNoteText}
-                        onFocus={() => setNoteFocused(true)}
-                        onBlur={() => setNoteFocused(false)}
-                        multiline
-                        autoFocus
-                        textAlignVertical="top"
-                      />
-                      <View style={styles.noteInputActions}>
-                        <TouchableOpacity
-                          onPress={() => { setAddingNoteForEntry(null); setNoteText(''); }}
-                          style={styles.noteCancelBtnWrap}
-                        >
-                          <Text style={styles.noteCancelBtn}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.noteSaveBtn, savingNote && { opacity: 0.6 }]}
-                          onPress={() => handleSaveNote(entry.id)}
-                          disabled={savingNote}
-                        >
-                          <Text style={styles.noteSaveBtnText}>
-                            {savingNote ? 'Saving...' : 'Save'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
                 </View>
               )}
             </View>
@@ -751,6 +743,58 @@ export default function ClientDetailsScreen() {
         renderItem={({ item: renderPanel }) => renderPanel()}
         style={styles.pager}
       />
+
+      {/* Full-screen compose overlay for Message/Note editing */}
+      <Modal
+        visible={!!editingMessageForEntry || !!addingNoteForEntry}
+        transparent
+        animationType="slide"
+        onRequestClose={requestCloseComposer}
+      >
+        <KeyboardAvoidingView
+          style={composeStyles.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity style={composeStyles.backdrop} activeOpacity={1} onPress={requestCloseComposer} />
+          <Animated.View style={[composeStyles.sheet, composeSheetStyle]}>
+            <GestureDetector gesture={composeDragGesture}>
+              <View>
+                <View style={composeStyles.grabber} />
+                <View style={composeStyles.header}>
+                  <TouchableOpacity onPress={closeComposer}>
+                    <Text style={composeStyles.cancel}>Cancel</Text>
+                  </TouchableOpacity>
+                  <Text style={composeStyles.title}>
+                    {editingMessageForEntry ? 'Message to Client' : 'Therapist Note'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={editingMessageForEntry
+                      ? () => handleSaveMessage(editingMessageForEntry)
+                      : () => handleSaveNote(addingNoteForEntry)}
+                    disabled={savingMessage || savingNote}
+                  >
+                    <Text style={composeStyles.save}>
+                      {editingMessageForEntry
+                        ? (savingMessage ? 'Sending...' : 'Send')
+                        : (savingNote ? 'Saving...' : 'Save')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </GestureDetector>
+            <TextInput
+              style={composeStyles.input}
+              placeholder={editingMessageForEntry ? 'Write a message your client will see...' : 'Add a clinical note...'}
+              placeholderTextColor="#9CA3AF"
+              value={editingMessageForEntry ? messageText : noteText}
+              onChangeText={editingMessageForEntry ? setMessageText : setNoteText}
+              multiline
+              autoFocus
+              textAlignVertical="top"
+            />
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1040,30 +1084,6 @@ const styles = StyleSheet.create({
   noteItemDate: { fontSize: 10, color: '#9CA3AF' },
   noteDeleteBtn: { fontSize: 11, color: DANGER },
   noteItemText: { fontSize: 13, color: DARK, lineHeight: 18 },
-
-  noteInputWrap: {
-    marginTop: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: BORDER,
-    padding: spacing.sm,
-    backgroundColor: '#fff',
-  },
-  noteInputWrapFocused: { borderColor: BLUE },
-  noteInput: { fontSize: 13, color: DARK, minHeight: 80, textAlignVertical: 'top' },
-  noteInputActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
-  },
-  noteCancelBtnWrap: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  noteCancelBtn: { fontSize: 13, color: GRAY },
-  noteSaveBtn: { backgroundColor: BLUE, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 6 },
-  noteSaveBtnText: { fontSize: 13, color: '#fff', fontWeight: String(font.bold) },
 });
 
 const msgStyles = StyleSheet.create({
@@ -1076,10 +1096,52 @@ const msgStyles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   bubbleText: { fontSize: 13, color: '#065f46', lineHeight: 18 },
-  sendBtn: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
+});
+
+const composeStyles = StyleSheet.create({
+  overlay: { flex: 1 },
+  backdrop: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  sheet: {
+    position: 'absolute',
+    top: '12%',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#D1D5DB',
+    marginBottom: spacing.md,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  cancel: { fontSize: 15, color: GRAY },
+  title: { fontSize: 15, fontWeight: String(font.bold), color: DARK },
+  save: { fontSize: 15, fontWeight: String(font.bold), color: BLUE },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: DARK,
+    textAlignVertical: 'top',
   },
 });

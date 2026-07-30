@@ -14,7 +14,6 @@ import {
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { signUp } from '../../src/services/auth.service';
-import { linkClientToTherapist, validatePairingCode } from '../../src/services/pairing.service';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { requestPermissions, scheduleDailyReminder, scheduleStreakRisk } from '../../src/services/notification.service';
 import { colors, spacing, radius, font } from '../../src/theme';
@@ -40,8 +39,6 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState(null);
-  const [pairingCode, setPairingCode] = useState('');
-  const [connectionChoice, setConnectionChoice] = useState(null); // 'solo' | 'therapist'
   const [reminderTime, setReminderTime] = useState('09:00');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -71,27 +68,9 @@ export default function SignupScreen() {
   };
 
   const handleFinish = async () => {
-    // Validate the pairing code against Firestore before creating the account
-    if (role === 'client' && connectionChoice === 'therapist' && pairingCode.trim()) {
-      setLoading(true);
-      const codeValid = await validatePairingCode(pairingCode.trim());
-      if (!codeValid) {
-        setLoading(false);
-        Alert.alert('Invalid Code', 'That pairing code doesn\'t match any therapist. Please check with your therapist and try again.');
-        return;
-      }
-    }
-
     setLoading(true);
     try {
       const user = await signUp(email.trim(), password, displayName.trim(), role, reminderTime);
-
-      if (role === 'client' && connectionChoice === 'therapist' && pairingCode.trim()) {
-        await linkClientToTherapist(user.uid, pairingCode.trim(), {
-          displayName: user.displayName,
-          email: user.email,
-        });
-      }
 
       // Set up notifications for clients
       if (role === 'client') {
@@ -102,11 +81,11 @@ export default function SignupScreen() {
         }
       }
 
-      Alert.alert(
-        'Verify Your Email',
-        'A verification link has been sent to ' + email.trim() + '. Please check your inbox and verify your email before logging in.',
-        [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
-      );
+      if (user.role === 'therapist') {
+        router.replace('/(therapist)');
+      } else {
+        router.replace('/(client)');
+      }
     } catch (error) {
       Alert.alert('Sign Up Failed', error.message || 'Something went wrong. Please try again.');
     } finally {
@@ -227,42 +206,19 @@ export default function SignupScreen() {
             <View>
               {role === 'client' ? (
                 <>
-                  <Text style={styles.stepTitle}>How will you use The Loft?</Text>
-                  <TouchableOpacity
-                    style={[styles.roleCard, connectionChoice === 'solo' && styles.roleCardSelected]}
-                    onPress={() => { setConnectionChoice('solo'); setPairingCode(''); }}
-                  >
-                    <Text style={styles.roleEmoji}>🙋</Text>
-                    <View style={styles.roleText}>
-                      <Text style={[styles.roleTitle, connectionChoice === 'solo' && styles.roleSelected]}>Solo Mode</Text>
-                      <Text style={styles.roleDesc}>Track my wellness independently</Text>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.roleCard, connectionChoice === 'therapist' && styles.roleCardSelected]}
-                    onPress={() => setConnectionChoice('therapist')}
-                  >
+                  <Text style={styles.stepTitle}>You're all set!</Text>
+                  <Text style={styles.stepDesc}>
+                    You'll start in Solo Mode — your check-ins stay private to you.
+                  </Text>
+                  <View style={styles.roleCard}>
                     <Text style={styles.roleEmoji}>🩺</Text>
                     <View style={styles.roleText}>
-                      <Text style={[styles.roleTitle, connectionChoice === 'therapist' && styles.roleSelected]}>Connect to Therapist</Text>
-                      <Text style={styles.roleDesc}>Share progress with my therapist</Text>
+                      <Text style={styles.roleTitle}>Have a therapist?</Text>
+                      <Text style={styles.roleDesc}>
+                        Connect anytime later from Settings → Therapist Connection using their pairing code.
+                      </Text>
                     </View>
-                  </TouchableOpacity>
-                  {connectionChoice === 'therapist' && (
-                    <View style={styles.field}>
-                      <Text style={styles.label}>Therapist Pairing Code</Text>
-                      <TextInput
-                        style={[styles.input, styles.codeInput]}
-                        placeholder="A4K9P2"
-                        placeholderTextColor={colors.textSecondary}
-                        value={pairingCode}
-                        onChangeText={text => setPairingCode(text.toUpperCase())}
-                        autoCapitalize="characters"
-                        maxLength={6}
-                        autoCorrect={false}
-                      />
-                    </View>
-                  )}
+                  </View>
                 </>
               ) : (
                 <>
@@ -291,9 +247,9 @@ export default function SignupScreen() {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.button, (loading || (role === 'client' && !connectionChoice)) && styles.buttonDisabled]}
+                style={[styles.button, loading && styles.buttonDisabled]}
                 onPress={handleFinish}
-                disabled={loading || (role === 'client' && !connectionChoice)}
+                disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator color={colors.white} />
@@ -399,12 +355,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     backgroundColor: colors.background,
-  },
-  codeInput: {
-    letterSpacing: 4,
-    fontSize: 20,
-    textAlign: 'center',
-    fontWeight: String(font.bold),
   },
   roleCard: {
     flexDirection: 'row',

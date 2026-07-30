@@ -3,8 +3,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile,
-  sendEmailVerification
+  updateProfile
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -53,9 +52,6 @@ export const signUp = async (email, password, displayName, role, notificationTim
       });
     }
 
-    // Send verification email
-    await sendEmailVerification(user);
-
     return {
       uid: user.uid,
       email: user.email,
@@ -78,12 +74,6 @@ export const login = async (email, password) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-
-    // Block login if email not verified
-    if (!user.emailVerified) {
-      await signOut(auth);
-      throw new Error('Please verify your email before logging in. Check your inbox for a verification link.');
-    }
 
     // Fetch user data from Firestore
     const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -159,15 +149,6 @@ export const getCurrentUser = async (firebaseUser, retryCount = 0) => {
 
     return null;
   }
-};
-
-/**
- * Resend verification email — signs in temporarily, sends email, signs out
- */
-export const resendVerificationEmail = async (email, password) => {
-  const userCredential = await signInWithEmailAndPassword(auth, email, password);
-  await sendEmailVerification(userCredential.user);
-  await signOut(auth);
 };
 
 /**
