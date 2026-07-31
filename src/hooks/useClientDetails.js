@@ -56,5 +56,5 @@ export const useClientDetails = (clientId, therapistId) => {
     fetchClientDetails();
   }, [clientId, therapistId]);
 
-  return { client, entries, loading, error };
+  return { client, entries, setEntries, loading, error };
 };

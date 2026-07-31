@@ -269,7 +269,7 @@ export default function ClientDetailsScreen() {
   const { id } = useLocalSearchParams();
   const { currentUser } = useApp();
   const router = useRouter();
-  const { client, entries, loading, error } = useClientDetails(id, currentUser?.uid);
+  const { client, entries, setEntries, loading, error } = useClientDetails(id, currentUser?.uid);
   const { currentStreak, longestStreak, totalCheckIns } = calculateStreak(entries);
 
   const metricTrends = useMemo(() => {
@@ -366,6 +366,7 @@ export default function ClientDetailsScreen() {
       const trimmed = messageText.trim();
       await setClientMessage(entryId, trimmed);
       sendTherapistMessageNotif(id, trimmed).catch(() => {});
+      setEntries(prev => prev.map(e => e.id === entryId ? { ...e, therapistMessage: trimmed } : e));
       setEditingMessageForEntry(null);
       setMessageText('');
     } catch {
