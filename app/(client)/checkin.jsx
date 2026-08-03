@@ -2,17 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Alert,
   ActivityIndicator,
   useWindowDimensions,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,97 +22,128 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '../../src/context/AppContext';
-import { createEntry, getTodayEntries } from '../../src/services/entry.service';
-import { scheduleStreakRisk } from '../../src/services/notification.service';
-import { getClientSuicidalFlag } from '../../src/services/therapist.service';
-import { colors, spacing, radius, font } from '../../src/theme';
+import { createEntry } from '../../src/services/entry.service';
+import { getClientSuicidalFlag, getClientSelfHarmFlag } from '../../src/services/therapist.service';
 
-const ACTIVITIES = [
-  { id: 'exercise',    label: 'Exercise',    image: require('../../assets/activities/exercise.png') },
-  { id: 'socializing', label: 'Socializing', image: require('../../assets/activities/socializing.png') },
-  { id: 'meditation',  label: 'Meditation',  image: require('../../assets/activities/meditation.png') },
-  { id: 'reading',     label: 'Reading',     image: require('../../assets/activities/reading.png') },
-  { id: 'nature',      label: 'Nature',      image: require('../../assets/activities/nature.png') },
-  { id: 'creative',    label: 'Creative',    image: require('../../assets/activities/creative.png') },
-  { id: 'cooking',     label: 'Cooking',     image: require('../../assets/activities/cooking.png') },
-  { id: 'music',       label: 'Music',       image: require('../../assets/activities/music.png') },
-  { id: 'gaming',      label: 'Gaming',      image: require('../../assets/activities/gaming.png') },
-  { id: 'work',        label: 'Work',        image: require('../../assets/activities/work.png') },
-  { id: 'selfCare',    label: 'Self-care',   image: require('../../assets/activities/selfCare.png') },
-  { id: 'family',      label: 'Family',      image: require('../../assets/activities/family.png') },
-  { id: 'sports',      label: 'Sports',      image: require('../../assets/activities/sports.png') },
-  { id: 'tvMovies',    label: 'TV / Movies', image: require('../../assets/activities/tvMovies.png') },
-  { id: 'therapy',     label: 'Therapy',     image: require('../../assets/activities/therapy.png') },
-  { id: 'volunteering',label: 'Volunteering',image: require('../../assets/activities/volunteering.png') },
-  { id: 'pets',        label: 'Pets',        image: require('../../assets/activities/pets.png') },
-  { id: 'studying',    label: 'Studying',    image: require('../../assets/activities/studying.png') },
-  { id: 'school',      label: 'School',      image: require('../../assets/activities/school.png') },
-  { id: 'walk',        label: 'Walk',        image: require('../../assets/activities/walk.png') },
-  { id: 'shopping',    label: 'Shopping',    image: require('../../assets/activities/shopping.png') },
-  { id: 'journaling',  label: 'Journaling',  image: require('../../assets/activities/journaling.png') },
-  { id: 'cleaning',    label: 'Cleaning',    image: require('../../assets/activities/cleaning.png') },
-  { id: 'travel',      label: 'Travel',      image: require('../../assets/activities/travel.png') },
-  { id: 'swimming',    label: 'Swimming',    image: require('../../assets/activities/swimming.png') },
-  { id: 'spirituality',label: 'Spirituality',image: require('../../assets/activities/spirituality.png') },
-  { id: 'other',       label: 'Other',       image: require('../../assets/activities/other.png') },
-];
+import { colors, spacing, radius, font } from '../../src/theme';
 
 // colorLow → colorHigh: red→green when high is good, green→red when high is bad
 const RED   = '#fca5a5';
 const GREEN = '#86efac';
 
+// 10 is always the "up"/good end (green) and 1 is always "down"/bad (red) for
+// every slider. For stress/worry/emotions this means the number's meaning
+// flipped from before (stress=10 used to mean "very anxious", now means
+// "very calm") — accepted tradeoff, existing saved entries read differently.
 const BASE_SLIDER_STEPS = [
-  { key: 'mood',       min: 1,  max: 10, leftLabel: 'Worst Day',    rightLabel: 'Best Day',      subtitle: 'Overall mood',          colorLow: RED,   colorHigh: GREEN }, // high = good
-  { key: 'stress',     min: 1,  max: 10, leftLabel: 'Calm',         rightLabel: 'Anxious',        subtitle: 'Stress level',          colorLow: GREEN, colorHigh: RED   }, // high = bad
-  { key: 'worry',      min: 1,  max: 10, leftLabel: 'Clear Headed', rightLabel: 'Overthinking',  subtitle: 'Anxiety & worry',       colorLow: GREEN, colorHigh: RED   }, // high = bad
-  { key: 'emotions',   min: 1,  max: 10, leftLabel: 'Super Steady', rightLabel: 'Rollercoaster', subtitle: 'Emotional stability',   colorLow: GREEN, colorHigh: RED   }, // high = bad
-  { key: 'focus',      min: 1,  max: 10, leftLabel: 'Zoned Out',    rightLabel: 'Locked In',     subtitle: 'Concentration & focus', colorLow: RED,   colorHigh: GREEN }, // high = good
-  { key: 'motivation', min: 1,  max: 10, leftLabel: 'No Gas',       rightLabel: 'Full Tank',     subtitle: 'Drive & energy',        colorLow: RED,   colorHigh: GREEN }, // high = good
+  { key: 'mood',       min: 1,  max: 10, leftLabel: 'Worst Day',   rightLabel: 'Best Day',      subtitle: 'Overall mood',          colorLow: RED,   colorHigh: GREEN }, // high = good
+  { key: 'stress',     min: 1,  max: 10, leftLabel: 'Anxious',     rightLabel: 'Calm',          subtitle: 'Stress level',          colorLow: RED,   colorHigh: GREEN }, // high = good
+  { key: 'worry',      min: 1,  max: 10, leftLabel: 'Overthinking',rightLabel: 'Clear Headed',  subtitle: 'Anxiety & worry',       colorLow: RED,   colorHigh: GREEN }, // high = good
+  { key: 'emotions',   min: 1,  max: 10, leftLabel: 'Rollercoaster',rightLabel: 'Super Steady', subtitle: 'Emotional stability',   colorLow: RED,   colorHigh: GREEN }, // high = good
+  { key: 'focus',      min: 1,  max: 10, leftLabel: 'Zoned Out',   rightLabel: 'Locked In',     subtitle: 'Concentration & focus', colorLow: RED,   colorHigh: GREEN }, // high = good
+  { key: 'motivation', min: 1,  max: 10, leftLabel: 'No Gas',      rightLabel: 'Full Tank',     subtitle: 'Drive & energy',        colorLow: RED,   colorHigh: GREEN }, // high = good
 ];
 
-// ─────────────────────────────────────────────────────────────
-// Sleep time helpers
-// ─────────────────────────────────────────────────────────────
-const timeStringToDate = (str) => {
-  const [hour, minute] = str.split(':').map(Number);
-  const d = new Date();
-  d.setHours(hour, minute, 0, 0);
-  return d;
-};
-
-const dateToTimeString = (date) => {
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
-};
-
-const formatTime = (str) => {
-  const [hour, minute] = str.split(':').map(Number);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const h = hour % 12 || 12;
-  return `${h}:${String(minute).padStart(2, '0')} ${ampm}`;
-};
-
-// Hours between bedtime and wake time, wrapping past midnight
-const computeSleepHours = (bedTime, wakeTime) => {
-  const toMinutes = (t) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  let diff = toMinutes(wakeTime) - toMinutes(bedTime);
-  if (diff <= 0) diff += 24 * 60;
-  return Math.min(12, Math.round((diff / 60) * 10) / 10);
-};
-
-// Inserted at index 3 (after mood, stress, worry) when therapist flags client as suicidal risk
+// Inserted at index 3 (after mood, stress, worry) when therapist flags client as suicidal risk.
+// Same up=good/10=good convention as the other sliders now.
 const SUICIDAL_IDEATION_STEP = {
   key: 'suicidalIdeation', min: 1, max: 10,
-  leftLabel: 'No Thoughts', rightLabel: 'Intense Thoughts',
+  leftLabel: 'Intense Thoughts', rightLabel: 'No Thoughts',
   subtitle: 'Suicidal ideation',
-  colorLow: GREEN, colorHigh: RED, // high = bad
+  colorLow: RED, colorHigh: GREEN, // high = good
 };
+
+// Inserted next to the suicidal ideation step when therapist flags client for self-harm risk.
+// Not a slider — a plain yes/no split screen (see SelfHarmStep below).
+const SELF_HARM_STEP = { key: 'selfHarm' };
+
+// ─────────────────────────────────────────────────────────────
+// Self-harm yes/no step — top half of the screen = No (good/green),
+// bottom half = Yes (bad/red), same up-is-good convention as the sliders,
+// but a plain tap instead of a drag since it's a binary question.
+// ─────────────────────────────────────────────────────────────
+function SelfHarmStep({ value, onChange, onHorizontalMove, onHorizontalEnd }) {
+  const navGesture = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetX([-20, 20])
+    .failOffsetY([-15, 15])
+    .onUpdate((e) => onHorizontalMove?.(e.translationX))
+    .onEnd((e) => onHorizontalEnd?.(e.translationX));
+
+  const choose = (v) => {
+    if (value !== v) {
+      Haptics.selectionAsync();
+      onChange(v);
+    }
+  };
+
+  return (
+    <GestureDetector gesture={navGesture}>
+      <View style={{ flex: 1 }}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={[
+            selfHarmStyles.half,
+            { backgroundColor: value === false ? GREEN : '#eafaf0' },
+          ]}
+          onPress={() => choose(false)}
+        >
+          <Text style={selfHarmStyles.choiceText}>No</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={[
+            selfHarmStyles.half,
+            { backgroundColor: value === true ? RED : '#fdeeee' },
+          ]}
+          onPress={() => choose(true)}
+        >
+          <Text style={selfHarmStyles.choiceText}>Yes</Text>
+        </TouchableOpacity>
+
+        <View style={selfHarmStyles.titleWrap} pointerEvents="none">
+          <Text style={selfHarmStyles.title}>Did you self-harm yesterday?</Text>
+        </View>
+      </View>
+    </GestureDetector>
+  );
+}
+
+const selfHarmStyles = StyleSheet.create({
+  half: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  choiceText: {
+    fontSize: 40,
+    fontFamily: font.bold,
+    color: colors.text,
+  },
+  titleWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  title: {
+    fontSize: 17,
+    fontFamily: font.semibold,
+    color: colors.text,
+    textAlign: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
+});
 
 // ─────────────────────────────────────────────────────────────
 // Liquid fill slider — drag vertically to change value,
@@ -126,7 +151,7 @@ const SUICIDAL_IDEATION_STEP = {
 // Fill grows from 50% screen height (min) → 100% (max),
 // overflowing up into the header at high values.
 // ─────────────────────────────────────────────────────────────
-function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizontalEnd }) {
+function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizontalEnd, footer }) {
   const { height: screenHeight } = useWindowDimensions();
 
   // Single 0→1 progress drives both fill height and color
@@ -237,7 +262,7 @@ function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizon
           </View>
 
           {/* Low label — pinned to bottom */}
-          <View style={liquidStyles.bottomLabelWrap}>
+          <View style={[liquidStyles.bottomLabelWrap, footer && { paddingBottom: spacing.xxl + 76 }]}>
             <Ionicons name="arrow-down-outline" size={18} color={colors.textSecondary} />
             <Text style={liquidStyles.extremeLabel}>{config.leftLabel}</Text>
           </View>
@@ -285,19 +310,12 @@ const liquidStyles = StyleSheet.create({
     fontFamily: font.bold,
     color: colors.text,
   },
-  navHint: {
-    alignItems: 'center',
-  },
-  navHintText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-    opacity: 0.7,
-  },
 });
 
 // ─────────────────────────────────────────────────────────────
-// Main check-in screen
+// Main check-in screen — mood sliders only.
+// Can be run multiple times a day; sleep, activities, and
+// journal live in the separate "5 Things" daily check-in.
 // ─────────────────────────────────────────────────────────────
 export default function CheckInScreen() {
   const { currentUser } = useApp();
@@ -306,75 +324,55 @@ export default function CheckInScreen() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [isSuicidalFlagged, setIsSuicidalFlagged] = useState(false);
-  const [isSubsequent, setIsSubsequent] = useState(false);
+  const [isSelfHarmFlagged, setIsSelfHarmFlagged] = useState(false);
 
-  // Fetch therapist-set suicidal risk flag on mount
+  // Fetch therapist-set risk flags on mount
   useEffect(() => {
-    console.log('[CheckIn] therapistId:', currentUser?.therapistId, '| uid:', currentUser?.uid);
     if (!currentUser?.therapistId) return;
     getClientSuicidalFlag(currentUser.therapistId, currentUser.uid)
-      .then((flag) => {
-        console.log('[CheckIn] suicidalFlag fetched:', flag);
-        setIsSuicidalFlagged(flag);
-      })
-      .catch((err) => {
-        console.error('[CheckIn] Failed to fetch suicidal flag:', err);
+      .then(setIsSuicidalFlagged)
+      .catch(() => {
         // Default to false — check-in proceeds without the extra step
       });
+    getClientSelfHarmFlag(currentUser.therapistId, currentUser.uid)
+      .then(setIsSelfHarmFlagged)
+      .catch(() => {});
   }, [currentUser?.therapistId, currentUser?.uid]);
 
-  // Check if this is a subsequent check-in today (already checked in earlier)
-  useEffect(() => {
-    if (!currentUser?.uid) return;
-    getTodayEntries(currentUser.uid)
-      .then(entries => { if (entries.length > 0) setIsSubsequent(true); })
-      .catch(() => {});
-  }, [currentUser?.uid]);
-
-  // Build active slider steps — insert SI step at index 3 (after worry) when flagged
-  const activeSteps = isSuicidalFlagged
-    ? [...BASE_SLIDER_STEPS.slice(0, 3), SUICIDAL_IDEATION_STEP, ...BASE_SLIDER_STEPS.slice(3)]
+  // Build active slider steps — insert flagged risk steps at index 3 (after worry)
+  const riskSteps = [
+    ...(isSuicidalFlagged ? [SUICIDAL_IDEATION_STEP] : []),
+    ...(isSelfHarmFlagged ? [SELF_HARM_STEP] : []),
+  ];
+  const activeSteps = riskSteps.length
+    ? [...BASE_SLIDER_STEPS.slice(0, 3), ...riskSteps, ...BASE_SLIDER_STEPS.slice(3)]
     : BASE_SLIDER_STEPS;
 
-  // For subsequent check-ins, skip the sleep step (already captured earlier today)
-  const includeSleep = !isSubsequent;
-
-  const SLEEP_STEP      = activeSteps.length;
-  const ACTIVITIES_STEP = activeSteps.length + (includeSleep ? 1 : 0);
-  const REFLECT_STEP    = ACTIVITIES_STEP + 1;
-  const TOTAL_STEPS     = REFLECT_STEP + 1;
+  const TOTAL_STEPS = activeSteps.length;
 
   const [values, setValues] = useState({
-    mood: 5, stress: 5, worry: 5, suicidalIdeation: 5, emotions: 5,
-    focus: 5, motivation: 5, bedTime: '23:00', wakeTime: '07:00',
+    mood: 5, stress: 5, worry: 5, suicidalIdeation: 5, emotions: 5, focus: 5, motivation: 5,
+    selfHarm: null,
   });
-  const [activities, setActivities] = useState([]);
-  const [wordOfDay, setWordOfDay]   = useState('');
-  const [journal, setJournal]       = useState('');
-  const [sleepField, setSleepField] = useState(null); // 'bedTime' | 'wakeTime' | null
 
   const setVal = (key) => (v) => setValues(prev => ({ ...prev, [key]: v }));
-  const toggleActivity = (id) =>
-    setActivities(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-
-  const handleSleepTimeChange = (_, date) => {
-    if (!date || !sleepField) return;
-    const field = sleepField;
-    setValues(prev => ({ ...prev, [field]: dateToTimeString(date) }));
-  };
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const sleepHours = computeSleepHours(values.bedTime, values.wakeTime);
-      await createEntry(
-        { ...values, sleepHours, activities, wordOfDay, journal },
-        currentUser?.uid,
-        currentUser?.therapistId || null
-      );
-      scheduleStreakRisk().catch(() => {}); // reset the 8pm nudge for tomorrow
+      const entryData = {
+        type: 'mood',
+        mood: values.mood,
+        stress: values.stress,
+        worry: values.worry,
+        emotions: values.emotions,
+        focus: values.focus,
+        motivation: values.motivation,
+      };
+      if (isSuicidalFlagged) entryData.suicidalIdeation = values.suicidalIdeation;
+      if (isSelfHarmFlagged) entryData.selfHarm = values.selfHarm;
+
+      await createEntry(entryData, currentUser?.uid, currentUser?.therapistId || null);
       Alert.alert('Done!', 'Check-in saved.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -422,7 +420,7 @@ export default function CheckInScreen() {
   };
 
   const handleHorizontalEnd = (dx) => {
-    const THRESHOLD = screenWidth * 0.32;
+    const THRESHOLD = screenWidth * 0.15;
     const canGoNext = step < TOTAL_STEPS - 1;
     const canGoBack = step > 0;
 
@@ -441,190 +439,52 @@ export default function CheckInScreen() {
     }
   };
 
-  // ── Activities gesture (wraps a ScrollView) ───────────────
-  // failOffsetY lets vertical scroll work; onFinalize resets if cancelled
-  const activitiesGesture = Gesture.Pan()
-    .runOnJS(true)
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-15, 15])
-    .onUpdate((e) => {
-      handleHorizontalMove(e.translationX);
-    })
-    .onEnd((e) => {
-      handleHorizontalEnd(e.translationX);
-    })
-    .onFinalize((_e, success) => {
-      if (!success) totalOffset.value = withTiming(-step * screenWidth, { duration: 220 });
-    });
-
-  // ── Reflect gesture (back-swipe only; no advance past last step) ──
-  const reflectGesture = Gesture.Pan()
-    .runOnJS(true)
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-15, 15])
-    .onUpdate((e) => {
-      handleHorizontalMove(e.translationX);
-    })
-    .onEnd((e) => {
-      handleHorizontalEnd(e.translationX);
-    })
-    .onFinalize((_e, success) => {
-      if (!success) totalOffset.value = withTiming(-step * screenWidth, { duration: 220 });
-    });
-
   // ── Render a single slide by index ────────────────────────
   const renderSlideContent = (slideIndex) => {
     if (slideIndex < 0 || slideIndex >= TOTAL_STEPS) {
       return <View key={`empty-${slideIndex}`} style={{ flex: 1 }} />;
     }
 
-    if (slideIndex < activeSteps.length) {
-      const config = activeSteps[slideIndex];
-      return (
-        <LiquidSliderStep
-          key={`liquid-${slideIndex}`}
-          config={config}
-          value={values[config.key]}
-          onChange={setVal(config.key)}
-          onHorizontalMove={handleHorizontalMove}
-          onHorizontalEnd={handleHorizontalEnd}
-        />
-      );
-    }
+    const config = activeSteps[slideIndex];
+    const isLast = slideIndex === TOTAL_STEPS - 1;
 
-    if (includeSleep && slideIndex === SLEEP_STEP) {
-      const sleepHours = computeSleepHours(values.bedTime, values.wakeTime);
-      return (
-        <GestureDetector key="sleep" gesture={reflectGesture}>
-          <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg }}>
-            <Text style={styles.stepTitle}>Sleep</Text>
-            <Text style={styles.subLabel}>How much did you sleep last night?</Text>
-
-            <TouchableOpacity style={styles.sleepRow} onPress={() => setSleepField('bedTime')}>
-              <View style={styles.sleepRowLeft}>
-                <Ionicons name="moon-outline" size={20} color={colors.textSecondary} />
-                <Text style={styles.sleepRowLabel}>Went to sleep</Text>
-              </View>
-              <View style={styles.sleepRowRight}>
-                <Text style={styles.sleepRowValue}>{formatTime(values.bedTime)}</Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.sleepRow} onPress={() => setSleepField('wakeTime')}>
-              <View style={styles.sleepRowLeft}>
-                <Ionicons name="sunny-outline" size={20} color={colors.textSecondary} />
-                <Text style={styles.sleepRowLabel}>Woke up</Text>
-              </View>
-              <View style={styles.sleepRowRight}>
-                <Text style={styles.sleepRowValue}>{formatTime(values.wakeTime)}</Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.sleepTotalWrap}>
-              <Text style={styles.sleepTotalValue}>{sleepHours}</Text>
-              <Text style={styles.sleepTotalLabel}>hours of sleep</Text>
-            </View>
-          </View>
-        </GestureDetector>
-      );
-    }
-
-    if (slideIndex === ACTIVITIES_STEP) {
-      return (
-        <GestureDetector key="activities" gesture={activitiesGesture}>
-          <View style={{ flex: 1 }}>
-            <ScrollView
-              contentContainerStyle={styles.scroll}
-              keyboardShouldPersistTaps="handled"
+    return (
+      <View style={{ flex: 1 }}>
+        {config.key === 'selfHarm' ? (
+          <SelfHarmStep
+            key={`selfharm-${slideIndex}`}
+            value={values.selfHarm}
+            onChange={setVal('selfHarm')}
+            onHorizontalMove={handleHorizontalMove}
+            onHorizontalEnd={handleHorizontalEnd}
+          />
+        ) : (
+          <LiquidSliderStep
+            key={`liquid-${slideIndex}`}
+            config={config}
+            value={values[config.key]}
+            onChange={setVal(config.key)}
+            onHorizontalMove={handleHorizontalMove}
+            onHorizontalEnd={handleHorizontalEnd}
+            footer={isLast}
+          />
+        )}
+        {isLast && (
+          <View style={[styles.saveWrap, { paddingBottom: insets.bottom + 16 }]} pointerEvents="box-none">
+            <TouchableOpacity
+              style={[styles.saveBtn, loading && styles.saveBtnDisabled]}
+              onPress={handleSubmit}
+              disabled={loading}
             >
-              <Text style={styles.stepTitle}>{isSubsequent ? 'Any new activities?' : 'What did you do today?'}</Text>
-              <View style={styles.activityGrid}>
-                {ACTIVITIES.map(a => (
-                  <TouchableOpacity
-                    key={a.id}
-                    style={[
-                      styles.activityBtn,
-                      activities.includes(a.id) && styles.activityBtnActive,
-                    ]}
-                    onPress={() => toggleActivity(a.id)}
-                  >
-                    <Image
-                      source={a.image}
-                      style={{ width: 32, height: 32 }}
-                      resizeMode="contain"
-                    />
-                    <Text style={[
-                      styles.activityLabel,
-                      activities.includes(a.id) && styles.activityLabelActive,
-                    ]}>
-                      {a.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+              {loading
+                ? <ActivityIndicator color={colors.white} />
+                : <Text style={styles.saveBtnText}>Save Check-in</Text>
+              }
+            </TouchableOpacity>
           </View>
-        </GestureDetector>
-      );
-    }
-
-    if (slideIndex === REFLECT_STEP) {
-      return (
-        <GestureDetector key="reflect" gesture={reflectGesture}>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={insets.top + 70}
-          >
-            <ScrollView
-              contentContainerStyle={[styles.scroll, { paddingBottom: spacing.lg }]}
-              keyboardShouldPersistTaps="handled"
-            >
-              <Text style={styles.stepTitle}>Reflect</Text>
-              <View style={styles.field}>
-                <Text style={styles.subLabel}>{isSubsequent ? 'New Word of the Day' : 'Word of the Day'}</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="One word to describe your day"
-                  placeholderTextColor={colors.textSecondary}
-                  value={wordOfDay}
-                  onChangeText={setWordOfDay}
-                  maxLength={30}
-                />
-              </View>
-              <View style={styles.field}>
-                <Text style={styles.subLabel}>Journal</Text>
-                <TextInput
-                  style={[styles.input, styles.journalInput]}
-                  placeholder="How are you feeling? What's on your mind?"
-                  placeholderTextColor={colors.textSecondary}
-                  value={journal}
-                  onChangeText={setJournal}
-                  multiline
-                  textAlignVertical="top"
-                />
-              </View>
-            </ScrollView>
-            <View style={[styles.saveWrap, { paddingBottom: insets.bottom + 16 }]}>
-              <TouchableOpacity
-                style={[styles.saveBtn, loading && styles.nextBtnDisabled]}
-                onPress={handleSubmit}
-                disabled={loading}
-              >
-                {loading
-                  ? <ActivityIndicator color={colors.white} />
-                  : <Text style={styles.saveBtnText}>Save Check-in</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </GestureDetector>
-      );
-    }
-
-    return null;
+        )}
+      </View>
+    );
   };
 
   return (
@@ -643,7 +503,7 @@ export default function CheckInScreen() {
         }>
           <Text style={styles.cancel}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Daily Check-in</Text>
+        <Text style={styles.title}>Mood Check-in</Text>
         <Text style={styles.stepLabel}>{step + 1}/{TOTAL_STEPS}</Text>
       </View>
 
@@ -677,35 +537,6 @@ export default function CheckInScreen() {
           })}
         </Animated.View>
       </View>
-
-      {/* Sleep time picker sheet */}
-      <Modal
-        visible={!!sleepField}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSleepField(null)}
-      >
-        <View style={{ flex: 1 }}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setSleepField(null)} />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
-            <Text style={styles.sheetTitle}>
-              {sleepField === 'bedTime' ? 'Went to Sleep' : 'Woke Up'}
-            </Text>
-            {sleepField && (
-              <DateTimePicker
-                value={timeStringToDate(values[sleepField])}
-                mode="time"
-                display="spinner"
-                onChange={handleSleepTimeChange}
-                style={{ width: '100%' }}
-              />
-            )}
-            <TouchableOpacity style={styles.confirmBtn} onPress={() => setSleepField(null)}>
-              <Text style={styles.confirmBtnText}>Confirm</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -735,40 +566,13 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  // Activities & Reflect
-  scroll:    { padding: spacing.lg, paddingBottom: 120 },
-  stepTitle: { fontSize: 24, fontFamily: font.bold, color: colors.text, marginBottom: spacing.lg },
-  subLabel:  { fontSize: 15, fontFamily: font.medium, color: colors.text, marginBottom: spacing.sm, marginTop: spacing.sm },
-  activityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  activityBtn: {
-    width: '30%',
-    aspectRatio: 1,
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.border,
-    gap: 4,
-  },
-  activityBtnActive:  { borderColor: colors.primary, backgroundColor: colors.primaryLight },
-  activityLabel:      { fontSize: 11, color: colors.textSecondary, textAlign: 'center' },
-  activityLabelActive:{ color: colors.primary, fontFamily: font.medium },
-  field:      { marginBottom: spacing.md },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.white,
-  },
-  journalInput: { minHeight: 150, paddingTop: spacing.md },
-
   saveWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     paddingHorizontal: spacing.lg,
+    zIndex: 5,
   },
   saveBtn: {
     backgroundColor: colors.primary,
@@ -776,52 +580,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
   },
-  saveBtnText:     { color: colors.white, fontSize: 16, fontFamily: font.semibold },
-  nextBtnDisabled: { opacity: 0.7 },
-
-  // Sleep step
-  sleepRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 16,
-    marginTop: spacing.md,
-  },
-  sleepRowLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sleepRowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sleepRowLabel: { fontSize: 16, fontFamily: font.medium, color: colors.text },
-  sleepRowValue: { fontSize: 16, color: colors.textSecondary },
-  sleepTotalWrap: { alignItems: 'center', marginTop: spacing.xl },
-  sleepTotalValue: { fontSize: 48, fontFamily: font.bold, color: colors.text },
-  sleepTotalLabel: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
-
-  // Sleep time picker sheet
-  sheet: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    alignItems: 'center',
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontFamily: font.semibold,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  confirmBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    paddingVertical: 14,
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    marginTop: spacing.md,
-  },
-  confirmBtnText: { color: colors.white, fontSize: 16, fontFamily: font.semibold },
+  saveBtnText:      { color: colors.white, fontSize: 16, fontFamily: font.semibold },
+  saveBtnDisabled:  { opacity: 0.7 },
 });

@@ -25,6 +25,7 @@ import { useApp } from '../../../src/context/AppContext';
 import { useClientDetails } from '../../../src/hooks/useClientDetails';
 import { calculateStreak } from '../../../src/utils/streakCalculator';
 import { getRelativeDateString } from '../../../src/utils/dateHelpers';
+import { formatActivity } from '../../../src/utils/labelHelpers';
 import { spacing, font } from '../../../src/theme';
 import {
   subscribeToClientNotes,
@@ -74,14 +75,20 @@ const METRICS = [
   { key: 'sleepHours', label: 'Sleep',      max: 12 },
 ];
 
+// Yes/No fields from the 5 Things check-in — tracked as "days true / days answered"
+// rather than a line chart, since they're booleans, not a 1-10 scale.
+const FIVE_FACTOR_BOOL_METRICS = [
+  { key: 'movedYesterday', label: 'Moved' },
+  { key: 'wentOutside',    label: 'Outside' },
+  { key: 'socialized',     label: 'Social' },
+  { key: 'ateWell',        label: 'Ate Well' },
+];
+
 function getMetricStatus(key, value) {
   if (value == null) return { color: '#888', label: '—' };
-  if (key === 'stress' || key === 'worry' || key === 'emotions') {
-    if (value <= 4) return { color: '#2a7a3b', label: 'LOW' };
-    if (value <= 7) return { color: '#888',    label: 'MODERATE' };
-    if (value <= 8) return { color: '#e6a817', label: 'ELEVATED' };
-    return                 { color: DANGER,    label: 'HIGH' };
-  }
+  // stress/worry/emotions now use the same high=good scale as mood/focus/
+  // motivation (10 is always calm/steady/green), so they fall through to
+  // the default branch below instead of a dedicated high=bad one.
   if (key === 'sleepHours') {
     if (value >= 7 && value <= 9) return { color: '#2a7a3b', label: 'GOOD' };
     if (value >= 5)               return { color: '#888',    label: 'MODERATE' };
@@ -232,6 +239,32 @@ function MetricBar({ label, value, max = 10, barColor = BLUE }) {
   );
 }
 
+// ─── Yes/No trend card (5 Things booleans) ─────────────────────────────────────
+
+function BoolTrendCard({ label, trueCount, total }) {
+  if (!total) return null;
+  const pct = trueCount / total;
+  const color = pct >= 0.7 ? '#2a7a3b' : pct >= 0.4 ? '#e6a817' : DANGER;
+  return (
+    <View style={[trendStyles.card, CARD_SHADOW]}>
+      <View style={trendStyles.header}>
+        <Text style={trendStyles.label}>{label}</Text>
+        <Text style={trendStyles.count}>{trueCount}/{total} days</Text>
+      </View>
+      <View style={barStyles.track}>
+        <View style={[barStyles.fill, { width: `${pct * 100}%`, backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
+const trendStyles = StyleSheet.create({
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: spacing.md, marginBottom: spacing.md },
+  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
+  label: { fontSize: 13, fontWeight: String(font.bold), color: BLUE },
+  count: { fontSize: 11, color: GRAY },
+});
+
 const barStyles = StyleSheet.create({
   container: { marginBottom: 10 },
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
@@ -256,6 +289,10 @@ function formatNoteDate(isoString) {
   }
 }
 
+// Legacy entries predate the mood/fiveFactors split — treat them as the
+// primary daily check-in so existing streak history isn't lost.
+const isFiveFactorEntry = (e) => e.type === 'fiveFactors' || e.type == null;
+
 function getInitials(name) {
   if (!name) return '?';
   const parts = name.trim().split(/\s+/);
@@ -270,7 +307,7 @@ export default function ClientDetailsScreen() {
   const { currentUser } = useApp();
   const router = useRouter();
   const { client, entries, setEntries, loading, error } = useClientDetails(id, currentUser?.uid);
-  const { currentStreak, longestStreak, totalCheckIns } = calculateStreak(entries);
+  const { currentStreak, longestStreak, totalCheckIns } = calculateStreak(entries.filter(isFiveFactorEntry));
 
   const metricTrends = useMemo(() => {
     const cutoff = new Date();
@@ -292,6 +329,20 @@ export default function ClientDetailsScreen() {
       const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
       const { color, label } = getMetricStatus(m.key, avg);
       result[m.key] = { color, label, values: vals, dates, avg, max: m.max };
+    }
+    return result;
+  }, [entries]);
+
+  const fiveFactorBoolTrends = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 14);
+    cutoff.setHours(0, 0, 0, 0);
+    const recent = entries.filter(e => e.type === 'fiveFactors' && new Date(e.date) >= cutoff);
+    const result = {};
+    for (const m of FIVE_FACTOR_BOOL_METRICS) {
+      const present = recent.filter(e => e[m.key] != null);
+      const trueCount = present.filter(e => e[m.key] === true).length;
+      result[m.key] = { total: present.length, trueCount };
     }
     return result;
   }, [entries]);
@@ -460,6 +511,7 @@ export default function ClientDetailsScreen() {
   }
 
   const isSuicidal = clientLabels.includes('Suicidal');
+  const isSelfHarm = clientLabels.includes('Self-Harm');
 
   // ── Tab panel renderers ────────────────────────────────────────────────────
 
@@ -477,15 +529,25 @@ export default function ClientDetailsScreen() {
           const isExpanded = expandedEntryId === entry.id;
           const notesForEntry = notes.filter(n => n.entryId === entry.id);
           const moodStatus = getMetricStatus('mood', entry.mood);
+          const isFiveFactors = entry.type === 'fiveFactors';
+          const activityTags = isFiveFactors
+            ? [...(entry.movementActivities || []), ...(entry.outsideActivities || [])]
+            : entry.activities;
 
           return (
             <View key={entry.id} style={[styles.entryCard, CARD_SHADOW]}>
+              {entry.selfHarm === true && (
+                <View style={styles.selfHarmBanner}>
+                  <Text style={styles.selfHarmBannerText}>⚠ Self-harm reported</Text>
+                </View>
+              )}
               <TouchableOpacity
                 style={styles.entryRow}
                 onPress={() => setExpandedEntryId(isExpanded ? null : entry.id)}
                 activeOpacity={0.7}
               >
                 <View style={styles.entryRowLeft}>
+                  <Text style={styles.entryTypeLabel}>{isFiveFactors ? '5 THINGS' : 'MOOD'}</Text>
                   <Text style={styles.entryDate}>
                     {getRelativeDateString(entry.date)}
                   </Text>
@@ -499,6 +561,21 @@ export default function ClientDetailsScreen() {
                       <Text style={[styles.moodPillText, { color: moodStatus.color }]}>
                         {Math.round(entry.mood)}/10
                       </Text>
+                    </View>
+                  )}
+                  {isFiveFactors && entry.sleepHours != null && (
+                    <View style={[styles.moodPill, { backgroundColor: getMetricStatus('sleepHours', entry.sleepHours).color + '22' }]}>
+                      <Text style={[styles.moodPillText, { color: getMetricStatus('sleepHours', entry.sleepHours).color }]}>
+                        {entry.sleepHours}h
+                      </Text>
+                    </View>
+                  )}
+                  {isFiveFactors && (
+                    <View style={styles.fiveFactorGlance}>
+                      <Text style={[styles.fiveFactorGlanceText, !entry.movedYesterday && styles.fiveFactorGlanceOff]}>M</Text>
+                      <Text style={[styles.fiveFactorGlanceText, !entry.wentOutside && styles.fiveFactorGlanceOff]}>O</Text>
+                      <Text style={[styles.fiveFactorGlanceText, !entry.socialized && styles.fiveFactorGlanceOff]}>S</Text>
+                      <Text style={[styles.fiveFactorGlanceText, !entry.ateWell && styles.fiveFactorGlanceOff]}>A</Text>
                     </View>
                   )}
                   <Text style={styles.entryChevron}>{isExpanded ? '∨' : '›'}</Text>
@@ -530,13 +607,36 @@ export default function ClientDetailsScreen() {
                   <MetricBar label="Motivation" value={entry.motivation} barColor={getMetricStatus('motivation', entry.motivation).color} />
                   <MetricBar label="Sleep"      value={entry.sleepHours} max={12} barColor={getMetricStatus('sleepHours', entry.sleepHours).color} />
 
-                  {entry.activities?.length > 0 && (
+                  {entry.selfHarm != null && (
+                    <View style={styles.expandedSection}>
+                      <Text style={styles.expandedSectionLabel}>Self-Harm</Text>
+                      <View style={[styles.tag, entry.selfHarm && { backgroundColor: '#FEE2E2' }]}>
+                        <Text style={[styles.tagText, entry.selfHarm && { color: DANGER, fontWeight: String(font.bold) }]}>
+                          {entry.selfHarm ? 'Yes' : 'No'}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {isFiveFactors && (
+                    <View style={styles.expandedSection}>
+                      <Text style={styles.expandedSectionLabel}>5 Things</Text>
+                      <View style={styles.tagsRow}>
+                        <View style={styles.tag}><Text style={styles.tagText}>Moved: {entry.movedYesterday ? `Yes${entry.movementAmount ? ` (${entry.movementAmount})` : ''}` : 'No'}</Text></View>
+                        <View style={styles.tag}><Text style={styles.tagText}>Outside: {entry.wentOutside ? `Yes${entry.outsideAmount ? ` (${entry.outsideAmount})` : ''}` : 'No'}</Text></View>
+                        <View style={styles.tag}><Text style={styles.tagText}>Social: {entry.socialized ? 'Yes' : 'No'}</Text></View>
+                        <View style={styles.tag}><Text style={styles.tagText}>Ate well: {entry.ateWell ? 'Yes' : 'No'}</Text></View>
+                      </View>
+                    </View>
+                  )}
+
+                  {activityTags?.length > 0 && (
                     <View style={styles.expandedSection}>
                       <Text style={styles.expandedSectionLabel}>Activities</Text>
                       <View style={styles.tagsRow}>
-                        {entry.activities.map(a => (
+                        {activityTags.map(a => (
                           <View key={a} style={styles.tag}>
-                            <Text style={styles.tagText}>{a}</Text>
+                            <Text style={styles.tagText}>{formatActivity(a)}</Text>
                           </View>
                         ))}
                       </View>
@@ -547,6 +647,13 @@ export default function ClientDetailsScreen() {
                     <View style={styles.expandedSection}>
                       <Text style={styles.expandedSectionLabel}>Word of the Day</Text>
                       <Text style={styles.wordOfDay}>"{entry.wordOfDay}"</Text>
+                    </View>
+                  ) : null}
+
+                  {entry.meals ? (
+                    <View style={styles.expandedSection}>
+                      <Text style={styles.expandedSectionLabel}>Meals</Text>
+                      <Text style={styles.journal}>{entry.meals}</Text>
                     </View>
                   ) : null}
 
@@ -621,35 +728,65 @@ export default function ClientDetailsScreen() {
     </ScrollView>
   );
 
-  const renderTrends = () => (
-    <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
-      {renderClientHeader()}
-      {entries.length === 0 ? (
-        <Text style={styles.emptyText}>No check-ins yet.</Text>
-      ) : (
-        METRICS.map(m => {
-          const t = metricTrends[m.key];
-          if (!t || t.values.length === 0) return null;
-          return (
-            <View key={m.key} style={[styles.trendCard, CARD_SHADOW]}>
-              <View style={styles.trendCardHeader}>
-                <Text style={styles.trendMetricLabel}>{m.label}</Text>
-                <View style={styles.trendCardRight}>
-                  {t.avg != null && (
-                    <Text style={styles.trendAvg}>avg {t.avg.toFixed(1)}/{m.max}</Text>
-                  )}
-                  <View style={[styles.trendStatusPill, { backgroundColor: t.color + '22' }]}>
-                    <Text style={[styles.trendStatusText, { color: t.color }]}>{t.label}</Text>
-                  </View>
-                </View>
-              </View>
-              <MiniLineChart values={t.values} dates={t.dates} color={t.color} max={m.max} />
+  const renderMetricCard = (m) => {
+    const t = metricTrends[m.key];
+    if (!t || t.values.length === 0) return null;
+    return (
+      <View key={m.key} style={[styles.trendCard, CARD_SHADOW]}>
+        <View style={styles.trendCardHeader}>
+          <Text style={styles.trendMetricLabel}>{m.label}</Text>
+          <View style={styles.trendCardRight}>
+            {t.avg != null && (
+              <Text style={styles.trendAvg}>avg {t.avg.toFixed(1)}/{m.max}</Text>
+            )}
+            <View style={[styles.trendStatusPill, { backgroundColor: t.color + '22' }]}>
+              <Text style={[styles.trendStatusText, { color: t.color }]}>{t.label}</Text>
             </View>
-          );
-        })
-      )}
-    </ScrollView>
-  );
+          </View>
+        </View>
+        <MiniLineChart values={t.values} dates={t.dates} color={t.color} max={m.max} />
+      </View>
+    );
+  };
+
+  const renderTrends = () => {
+    const moodMetrics = METRICS.filter(m => m.key !== 'sleepHours');
+    const sleepMetric = METRICS.find(m => m.key === 'sleepHours');
+
+    const moodCards = moodMetrics.map(renderMetricCard).filter(Boolean);
+    const sleepCard = sleepMetric ? renderMetricCard(sleepMetric) : null;
+    const boolCards = FIVE_FACTOR_BOOL_METRICS
+      .map(m => (
+        <BoolTrendCard
+          key={m.key}
+          label={m.label}
+          trueCount={fiveFactorBoolTrends[m.key].trueCount}
+          total={fiveFactorBoolTrends[m.key].total}
+        />
+      ))
+      .filter((el, i) => fiveFactorBoolTrends[FIVE_FACTOR_BOOL_METRICS[i].key].total > 0);
+
+    return (
+      <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
+        {renderClientHeader()}
+        {entries.length === 0 ? (
+          <Text style={styles.emptyText}>No check-ins yet.</Text>
+        ) : (
+          <>
+            <Text style={styles.sectionTitle}>Mood</Text>
+            {moodCards.length > 0
+              ? moodCards
+              : <Text style={styles.emptyText}>No mood check-ins in the last 14 days.</Text>}
+
+            <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>5 Things</Text>
+            {(sleepCard || boolCards.length > 0)
+              ? <>{sleepCard}{boolCards}</>
+              : <Text style={styles.emptyText}>No 5 Things check-ins in the last 14 days.</Text>}
+          </>
+        )}
+      </ScrollView>
+    );
+  };
 
   const renderClinical = () => (
     <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
@@ -671,6 +808,24 @@ export default function ClientDetailsScreen() {
           </Text>
         </View>
         <View style={[styles.labelIndicator, isSuicidal && styles.labelIndicatorActive]} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.labelCard, CARD_SHADOW, isSelfHarm && styles.labelCardActive, { marginTop: spacing.sm }]}
+        onPress={() => handleLabelToggle('Self-Harm')}
+        activeOpacity={0.8}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.labelCardTitle, isSelfHarm && { color: DANGER }]}>
+            Self-Harm
+          </Text>
+          <Text style={styles.labelCardSub}>
+            {isSelfHarm
+              ? 'Flag is active — check-in question is visible to client'
+              : 'Tap to activate risk monitoring'}
+          </Text>
+        </View>
+        <View style={[styles.labelIndicator, isSelfHarm && styles.labelIndicatorActive]} />
       </TouchableOpacity>
     </ScrollView>
   );
@@ -1002,6 +1157,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     overflow: 'hidden',
   },
+  selfHarmBanner: {
+    backgroundColor: DANGER,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+  },
+  selfHarmBannerText: {
+    fontSize: 12,
+    fontWeight: String(font.bold),
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
   entryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1010,11 +1176,21 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   entryRowLeft: { gap: 2 },
+  entryTypeLabel: { fontSize: 10, fontWeight: String(font.bold), color: GRAY, letterSpacing: 0.5 },
   entryDate: { fontSize: 14, fontWeight: String(font.semibold), color: DARK },
   entryTime: { fontSize: 11, color: GRAY },
   entryRowRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   moodPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 99 },
   moodPillText: { fontSize: 12, fontWeight: String(font.bold) },
+  fiveFactorGlance: { flexDirection: 'row', gap: 4 },
+  fiveFactorGlanceText: {
+    fontSize: 11,
+    fontWeight: String(font.bold),
+    color: '#2a7a3b',
+    width: 14,
+    textAlign: 'center',
+  },
+  fiveFactorGlanceOff: { color: '#D1D5DB' },
   entryChevron: { fontSize: 18, color: '#C8CDD5' },
 
   entryExpanded: {

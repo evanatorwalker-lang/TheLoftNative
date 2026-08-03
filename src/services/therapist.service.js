@@ -443,6 +443,31 @@ export const getClientSuicidalFlag = async (therapistId, clientId) => {
 };
 
 /**
+ * Get the self-harm risk flag for a client (used by the client's native app).
+ * @param {string} therapistId - Therapist's user ID
+ * @param {string} clientId - Client's user ID
+ * @returns {Promise<boolean>} Whether the self-harm risk flag is enabled
+ */
+export const getClientSelfHarmFlag = async (therapistId, clientId) => {
+  try {
+    // Use getDocFromServer to bypass local cache and always get the latest value
+    const therapistClientsDoc = await getDocFromServer(doc(db, 'therapist_clients', therapistId));
+    if (!therapistClientsDoc.exists()) return false;
+    const clients = therapistClientsDoc.data().clients || {};
+    const clientEntry = clients[clientId];
+    // Check the explicit boolean flag OR a "self-harm" text label
+    const hasFlag = !!(clientEntry?.selfHarmFlag);
+    const hasLabel = (clientEntry?.labels || []).some(
+      l => l.toLowerCase().includes('self-harm') || l.toLowerCase().includes('self harm')
+    );
+    return hasFlag || hasLabel;
+  } catch (error) {
+    console.error('Get self-harm flag error:', error);
+    return false;
+  }
+};
+
+/**
  * Write a client-visible message onto an entry document
  */
 export const setClientMessage = async (entryId, message) => {

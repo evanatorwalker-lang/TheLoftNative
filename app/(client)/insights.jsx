@@ -83,7 +83,7 @@ export default function InsightsScreen() {
             </Text>
             <TouchableOpacity
               style={styles.emptyBtn}
-              onPress={() => router.push('/(client)/checkin')}
+              onPress={() => router.push('/(client)/checkin-daily')}
             >
               <Ionicons name="add-circle-outline" size={18} color={colors.white} />
               <Text style={styles.emptyBtnText}>Start your first check-in</Text>
@@ -91,7 +91,7 @@ export default function InsightsScreen() {
           </View>
         ) : (
           <>
-            {/* Summary stats */}
+            {/* Summary stats — mood-only entries carry mood/focus */}
             <View style={styles.statsRow}>
               <View style={styles.statCard}>
                 <Text style={styles.statValue}>{entries.length}</Text>
@@ -99,13 +99,23 @@ export default function InsightsScreen() {
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statValue}>
-                  {(entries.reduce((s, e) => s + (e.mood || 0), 0) / entries.length).toFixed(1)}
+                  {(() => {
+                    const moodEntries = entries.filter(e => e.mood != null);
+                    return moodEntries.length
+                      ? (moodEntries.reduce((s, e) => s + e.mood, 0) / moodEntries.length).toFixed(1)
+                      : '—';
+                  })()}
                 </Text>
                 <Text style={styles.statLabel}>Avg Mood</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statValue}>
-                  {(entries.reduce((s, e) => s + (e.focus || 0), 0) / entries.length).toFixed(1)}
+                  {(() => {
+                    const focusEntries = entries.filter(e => e.focus != null);
+                    return focusEntries.length
+                      ? (focusEntries.reduce((s, e) => s + e.focus, 0) / focusEntries.length).toFixed(1)
+                      : '—';
+                  })()}
                 </Text>
                 <Text style={styles.statLabel}>Avg Focus</Text>
               </View>
@@ -113,49 +123,66 @@ export default function InsightsScreen() {
 
             {/* Entry history */}
             <Text style={styles.sectionTitle}>History</Text>
-            {entries.map(entry => (
-              <View key={entry.id} style={styles.entryCard}>
-                <View style={styles.entryHeader}>
-                  <View>
-                    <Text style={styles.entryDate}>
-                      {getRelativeDateString(entry.date)}
-                    </Text>
-                    {entry.checkinTime && (
-                      <Text style={styles.entryTime}>{entry.checkinTime}</Text>
-                    )}
+            {entries.map(entry => {
+              const isFiveFactors = entry.type === 'fiveFactors';
+              const tags = isFiveFactors
+                ? [...(entry.movementActivities || []), ...(entry.outsideActivities || [])]
+                : entry.activities;
+              return (
+                <View key={entry.id} style={styles.entryCard}>
+                  <View style={styles.entryHeader}>
+                    <View>
+                      <Text style={styles.entryDate}>
+                        {isFiveFactors ? '5 Things · ' : 'Mood · '}{getRelativeDateString(entry.date)}
+                      </Text>
+                      {entry.checkinTime && (
+                        <Text style={styles.entryTime}>{entry.checkinTime}</Text>
+                      )}
+                    </View>
+                    {isFiveFactors
+                      ? <Ionicons name="checkmark-done-circle" size={32} color={colors.primary} />
+                      : <MoodFace mood={entry.mood ?? 5} size={32} color={colors.text} />}
                   </View>
-                  <MoodFace mood={entry.mood ?? 5} size={32} color={colors.text} />
+
+                  {isFiveFactors ? (
+                    <View style={styles.tagsRow}>
+                      <View style={styles.tag}><Text style={styles.tagText}>Moved: {entry.movedYesterday ? 'Yes' : 'No'}</Text></View>
+                      <View style={styles.tag}><Text style={styles.tagText}>Outside: {entry.wentOutside ? 'Yes' : 'No'}</Text></View>
+                      <View style={styles.tag}><Text style={styles.tagText}>Social: {entry.socialized ? 'Yes' : 'No'}</Text></View>
+                      <View style={styles.tag}><Text style={styles.tagText}>Sleep: {entry.sleepHours}h</Text></View>
+                      <View style={styles.tag}><Text style={styles.tagText}>Ate well: {entry.ateWell ? 'Yes' : 'No'}</Text></View>
+                    </View>
+                  ) : (
+                    <>
+                      <MetricBar label="Mood" value={entry.mood} color={colors.primary} />
+                      <MetricBar label="Stress" value={entry.stress} color={colors.warning} />
+                      <MetricBar label="Focus" value={entry.focus} color={colors.success} />
+                    </>
+                  )}
+
+                  {tags?.length > 0 && (
+                    <View style={styles.tagsRow}>
+                      {tags.map(a => (
+                        <View key={a} style={[styles.tag, styles.tagActivity]}>
+                          <Text style={styles.tagText}>{formatActivity(a)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {entry.meals ? (
+                    <>
+                      <Text style={styles.mealsLabel}>MEALS</Text>
+                      <Text style={styles.journal}>{entry.meals}</Text>
+                    </>
+                  ) : null}
+
+                  {entry.journal ? (
+                    <Text style={styles.journal}>{entry.journal}</Text>
+                  ) : null}
                 </View>
-
-                <MetricBar label="Mood" value={entry.mood} color={colors.primary} />
-                <MetricBar label="Stress" value={entry.stress} color={colors.warning} />
-                <MetricBar label="Focus" value={entry.focus} color={colors.success} />
-
-                {entry.emotions?.length > 0 && (
-                  <View style={styles.tagsRow}>
-                    {entry.emotions.map(e => (
-                      <View key={e} style={styles.tag}>
-                        <Text style={styles.tagText}>{e}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {entry.activities?.length > 0 && (
-                  <View style={styles.tagsRow}>
-                    {entry.activities.map(a => (
-                      <View key={a} style={[styles.tag, styles.tagActivity]}>
-                        <Text style={styles.tagText}>{formatActivity(a)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {entry.journal ? (
-                  <Text style={styles.journal}>{entry.journal}</Text>
-                ) : null}
-              </View>
-            ))}
+              );
+            })}
           </>
         )}
       </ScrollView>
@@ -374,5 +401,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     lineHeight: 18,
     fontStyle: 'italic',
+  },
+  mealsLabel: {
+    fontSize: 11,
+    fontFamily: font.semibold,
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    marginTop: spacing.sm,
   },
 });

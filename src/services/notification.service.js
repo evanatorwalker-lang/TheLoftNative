@@ -31,8 +31,8 @@ export const scheduleDailyReminder = async (timeString) => {
 
   const id = await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Time for your daily check-in',
-      body: 'How are you feeling today? It only takes a minute.',
+      title: 'Time to log yesterday',
+      body: "How'd movement, sleep, and the rest go? Your 5 Things check-in only takes a minute.",
       sound: true,
     },
     trigger: {
@@ -56,7 +56,7 @@ export const scheduleStreakRisk = async () => {
   const id = await Notifications.scheduleNotificationAsync({
     content: {
       title: "Don't lose your streak! 🔥",
-      body: "You haven't checked in yet today. Keep your streak alive.",
+      body: "You haven't logged your 5 Things check-in yet today. Keep your streak alive.",
       sound: true,
     },
     trigger: {

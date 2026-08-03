@@ -7,6 +7,7 @@ export default function ClientLayout() {
       <Stack.Screen name="insights" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="checkin" />
+      <Stack.Screen name="checkin-daily" />
     </Stack>
   );
 }

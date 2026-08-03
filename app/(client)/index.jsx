@@ -109,8 +109,25 @@ const NAV_ITEMS = [
   { label: 'Settings', icon: 'settings-outline', route: '/(client)/settings' },
 ];
 
+// Legacy entries predate the mood/fiveFactors split — treat them as the
+// primary daily check-in so existing streak history isn't lost.
+const isFiveFactorEntry = (e) => e.type === 'fiveFactors' || e.type == null;
+
+function FactorPill({ icon, label, done }) {
+  return (
+    <View style={styles.factorPill}>
+      <Ionicons name={icon} size={20} color={done ? colors.primary : colors.border} />
+      <Text style={[styles.factorPillLabel, done && styles.factorPillLabelDone]}>{label}</Text>
+    </View>
+  );
+}
+
 // ── EntryCard: staggered entrance + card lift + expand/collapse ───────────────
 function EntryCard({ entry, index, isExpanded, onToggle }) {
+  const isFiveFactors = entry.type === 'fiveFactors';
+  const tags = isFiveFactors
+    ? [...(entry.movementActivities || []), ...(entry.outsideActivities || [])]
+    : entry.activities;
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(24);
   const scale = useSharedValue(1);
@@ -133,28 +150,52 @@ function EntryCard({ entry, index, isExpanded, onToggle }) {
     >
       <Animated.View style={[styles.entryCard, entranceStyle]}>
         <View style={styles.entryHeader}>
-          <Text style={styles.entryTime}>{formatEntryTime(entry)}</Text>
-          <MoodFace mood={entry.mood} size={28} color={colors.text} />
+          <View>
+            <Text style={styles.entryTypeLabel}>{isFiveFactors ? '5 THINGS' : 'MOOD'}</Text>
+            <Text style={styles.entryTime}>{formatEntryTime(entry)}</Text>
+          </View>
+          {isFiveFactors
+            ? <Ionicons name="checkmark-done-circle" size={28} color={colors.primary} />
+            : <MoodFace mood={entry.mood} size={28} color={colors.text} />}
         </View>
 
         <View style={styles.metricRow}>
-          {entry.mood != null && (
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>MOOD:</Text>
-              <Text style={styles.metricValue}>{entry.mood}/10</Text>
-            </View>
-          )}
-          {entry.stress != null && (
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>STRESS:</Text>
-              <Text style={styles.metricValue}>{entry.stress}/10</Text>
-            </View>
-          )}
-          {entry.focus != null && (
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>FOCUS:</Text>
-              <Text style={styles.metricValue}>{entry.focus}/10</Text>
-            </View>
+          {isFiveFactors ? (
+            <>
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>MOVED:</Text>
+                <Text style={styles.metricValue}>{entry.movedYesterday ? 'Yes' : 'No'}</Text>
+              </View>
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>OUTSIDE:</Text>
+                <Text style={styles.metricValue}>{entry.wentOutside ? 'Yes' : 'No'}</Text>
+              </View>
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>SLEEP:</Text>
+                <Text style={styles.metricValue}>{entry.sleepHours}h</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              {entry.mood != null && (
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>MOOD:</Text>
+                  <Text style={styles.metricValue}>{entry.mood}/10</Text>
+                </View>
+              )}
+              {entry.stress != null && (
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>STRESS:</Text>
+                  <Text style={styles.metricValue}>{entry.stress}/10</Text>
+                </View>
+              )}
+              {entry.focus != null && (
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>FOCUS:</Text>
+                  <Text style={styles.metricValue}>{entry.focus}/10</Text>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -166,16 +207,16 @@ function EntryCard({ entry, index, isExpanded, onToggle }) {
                 <Text style={styles.wordValue}>{entry.wordOfDay}</Text>
               </Text>
             )}
-            {entry.activities?.length > 0 && (
+            {tags?.length > 0 && (
               <View style={styles.tagRow}>
-                {entry.activities.slice(0, 3).map(a => (
+                {tags.slice(0, 3).map(a => (
                   <View key={a} style={styles.tag}>
                     <Text style={styles.tagText}>{formatActivity(a)}</Text>
                   </View>
                 ))}
-                {entry.activities.length > 3 && (
+                {tags.length > 3 && (
                   <View style={styles.tag}>
-                    <Text style={styles.tagText}>+{entry.activities.length - 3} more</Text>
+                    <Text style={styles.tagText}>+{tags.length - 3} more</Text>
                   </View>
                 )}
               </View>
@@ -210,8 +251,9 @@ export default function ClientHome() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [expandedEntry, setExpandedEntry] = useState(null);
 
-  const checkedInToday = hasCheckedInToday(entries);
-  const { currentStreak, longestStreak, totalCheckIns, lastCheckInDate } = calculateStreak(entries);
+  const fiveFactorEntries = entries.filter(isFiveFactorEntry);
+  const checkedInToday = hasCheckedInToday(fiveFactorEntries);
+  const { currentStreak, longestStreak, totalCheckIns, lastCheckInDate } = calculateStreak(fiveFactorEntries);
   const trophyTier = getTrophyTier(currentStreak);
   const [streakModalOpen, setStreakModalOpen] = useState(false);
   const weekDates = getWeekDates();
@@ -226,11 +268,15 @@ export default function ClientHome() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : hour < 21 ? 'Good evening' : 'Good night';
   const timeIcon  = hour < 12 ? 'sunny-outline' : hour < 17 ? 'partly-sunny-outline' : 'moon-outline';
   const timeColor = hour < 12 ? '#FBBF24' : hour < 17 ? '#FB923C' : '#C7D2FE';
-  const todayEntry = entries.find(e => e.date === getTodayDateString()) ?? null;
-  const recentEntries = (checkedInToday && todayEntry)
-    ? entries.filter(e => e.date !== getTodayDateString()).slice(0, 4)
+  const todayStr = getTodayDateString();
+  const todayFiveFactorEntry = fiveFactorEntries.find(e => e.date === todayStr) ?? null;
+  const todayMoodEntry = entries
+    .filter(e => e.type === 'mood' && e.date === todayStr)
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0] ?? null;
+  const recentEntries = checkedInToday
+    ? entries.filter(e => e.date !== todayStr).slice(0, 4)
     : entries.slice(0, 5);
-  const recentTitle = (checkedInToday && todayEntry) ? 'Earlier this week' : 'Recent Entries';
+  const recentTitle = checkedInToday ? 'Earlier this week' : 'Recent Entries';
 
   // ── Single scroll driving all parallax ───────────────────────────────────
   const scrollY = useSharedValue(0);
@@ -473,20 +519,55 @@ export default function ClientHome() {
                 style={styles.checkinCard}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  router.push('/(client)/checkin');
+                  router.push('/(client)/checkin-daily');
                 }}
                 activeOpacity={0.85}
               >
-                <Text style={styles.checkinText}>
-                  {checkedInToday ? '+ New Check-in' : 'Start Check-in'}
-                </Text>
-                <Ionicons name="arrow-forward" size={18} color={colors.primary} />
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={styles.checkinLabel}>5 THINGS CHECK-IN</Text>
+                  <View style={styles.checkinTextRow}>
+                    <Text style={styles.checkinText}>
+                      {checkedInToday ? 'Logged — Tap to Edit' : 'Log Yesterday'}
+                    </Text>
+                    <Ionicons
+                      name={checkedInToday ? 'checkmark-circle' : 'arrow-forward'}
+                      size={18}
+                      color={checkedInToday ? colors.success : colors.primary}
+                    />
+                  </View>
+                </View>
               </TouchableOpacity>
             </Animated.View>
+
+            {/* Floating quick-mood button — always available, unlimited per day */}
+            <TouchableOpacity
+              style={styles.moodFab}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/(client)/checkin');
+              }}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="happy-outline" size={24} color={colors.primary} />
+            </TouchableOpacity>
           </View>
 
-          {/* Today at a Glance card */}
-          {checkedInToday && todayEntry && (
+          {/* Yesterday's 5 Things summary — appears once logged */}
+          {todayFiveFactorEntry && (
+            <View style={styles.fiveFactorSummary}>
+              <Text style={styles.fiveFactorSummaryTitle}>Yesterday's 5 Things</Text>
+              <View style={styles.fiveFactorRow}>
+                <FactorPill icon="walk-outline" label="Moved" done={!!todayFiveFactorEntry.movedYesterday} />
+                <FactorPill icon="sunny-outline" label="Outside" done={!!todayFiveFactorEntry.wentOutside} />
+                <FactorPill icon="people-outline" label="Social" done={!!todayFiveFactorEntry.socialized} />
+                <FactorPill icon="moon-outline" label={`${todayFiveFactorEntry.sleepHours ?? '—'}h`} done={(todayFiveFactorEntry.sleepHours ?? 0) >= 6} />
+                <FactorPill icon="restaurant-outline" label="Ate well" done={!!todayFiveFactorEntry.ateWell} />
+              </View>
+            </View>
+          )}
+
+          {/* Today at a Glance card — most recent mood check-in today */}
+          {todayMoodEntry && (
             <LinearGradient
               colors={['#EEF1FF', '#E0F7FA']}
               start={{ x: 0, y: 0 }}
@@ -494,47 +575,32 @@ export default function ClientHome() {
               style={styles.todayCard}
             >
               <View style={styles.todayCardHeader}>
-                <MoodFace mood={todayEntry.mood} size={72} color={colors.text} />
+                <MoodFace mood={todayMoodEntry.mood} size={72} color={colors.text} />
                 <View style={{ marginLeft: -4 }}>
                   <Text style={styles.todayCardTitle}>Today at a glance</Text>
-                  <Text style={styles.todayCardTime}>{formatEntryTime(todayEntry)}</Text>
+                  <Text style={styles.todayCardTime}>{formatEntryTime(todayMoodEntry)}</Text>
                 </View>
               </View>
               <View style={styles.todayMetrics}>
-                {todayEntry.mood != null && (
+                {todayMoodEntry.mood != null && (
                   <View style={styles.todayMetric}>
-                    <Text style={styles.todayMetricValue}>{todayEntry.mood}</Text>
+                    <Text style={styles.todayMetricValue}>{todayMoodEntry.mood}</Text>
                     <Text style={styles.todayMetricLabel}>MOOD</Text>
                   </View>
                 )}
-                {todayEntry.stress != null && (
+                {todayMoodEntry.stress != null && (
                   <View style={styles.todayMetric}>
-                    <Text style={styles.todayMetricValue}>{todayEntry.stress}</Text>
+                    <Text style={styles.todayMetricValue}>{todayMoodEntry.stress}</Text>
                     <Text style={styles.todayMetricLabel}>STRESS</Text>
                   </View>
                 )}
-                {todayEntry.focus != null && (
+                {todayMoodEntry.focus != null && (
                   <View style={styles.todayMetric}>
-                    <Text style={styles.todayMetricValue}>{todayEntry.focus}</Text>
+                    <Text style={styles.todayMetricValue}>{todayMoodEntry.focus}</Text>
                     <Text style={styles.todayMetricLabel}>FOCUS</Text>
                   </View>
                 )}
               </View>
-              {!!todayEntry.wordOfDay && (
-                <Text style={styles.todayWord}>
-                  "<Text style={styles.todayWordValue}>{todayEntry.wordOfDay}</Text>"
-                </Text>
-              )}
-              {todayEntry.activities?.length > 0 && (
-                <View style={styles.tagRow}>
-                  {todayEntry.activities.slice(0, 4).map(a => (
-                    <View key={a} style={styles.tag}><Text style={styles.tagText}>{formatActivity(a)}</Text></View>
-                  ))}
-                  {todayEntry.activities.length > 4 && (
-                    <View style={styles.tag}><Text style={styles.tagText}>+{todayEntry.activities.length - 4}</Text></View>
-                  )}
-                </View>
-              )}
             </LinearGradient>
           )}
 
@@ -887,6 +953,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
     zIndex: 10,
+    position: 'relative',
   },
   checkinFloat: {
     width: '85%',
@@ -918,10 +985,73 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'center',
   },
+  checkinLabel: {
+    fontSize: 11,
+    fontFamily: font.semibold,
+    color: colors.textSecondary,
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  checkinTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   checkinText: {
     fontSize: 17,
     fontFamily: font.semibold,
     color: colors.primary,
+  },
+  moodFab: {
+    position: 'absolute',
+    right: spacing.xl,
+    bottom: -18,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.primaryLight,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  fiveFactorSummary: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xl + 4,
+    marginBottom: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  fiveFactorSummaryTitle: {
+    fontSize: 13,
+    fontFamily: font.semibold,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  fiveFactorRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  factorPill: { alignItems: 'center', gap: 4, flex: 1 },
+  factorPillLabel: { fontSize: 11, color: colors.textSecondary, fontFamily: font.medium },
+  factorPillLabelDone: { color: colors.primary, fontFamily: font.semibold },
+  entryTypeLabel: {
+    fontSize: 10,
+    fontFamily: font.semibold,
+    color: colors.textSecondary,
+    letterSpacing: 0.6,
+    marginBottom: 1,
   },
 
   // ── Entries ───────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../src/services/firebase';
 import { reschedule, cancelAllNotifications } from '../../src/services/notification.service';
+import { timeStringToDate, dateToTimeString, formatTime } from '../../src/utils/timeHelpers';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 const NAV_ITEMS = [
@@ -40,26 +41,6 @@ export default function SettingsScreen() {
   const [notifEnabled, setNotifEnabled] = useState(currentUser?.notificationsEnabled !== false);
   const [notifTime, setNotifTime] = useState(currentUser?.notificationTime || '09:00');
   const [therapistMsgNotif, setTherapistMsgNotif] = useState(currentUser?.therapistMessageNotif !== false);
-
-  const timeStringToDate = (str) => {
-    const [hour, minute] = str.split(':').map(Number);
-    const d = new Date();
-    d.setHours(hour, minute, 0, 0);
-    return d;
-  };
-
-  const dateToTimeString = (date) => {
-    const h = String(date.getHours()).padStart(2, '0');
-    const m = String(date.getMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
-  };
-
-  const formatTime = (str) => {
-    const [hour, minute] = str.split(':').map(Number);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const h = hour % 12 || 12;
-    return `${h}:${String(minute).padStart(2, '0')} ${ampm}`;
-  };
 
   const saveNotifPrefs = async (enabled, time) => {
     try {
