@@ -46,15 +46,6 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const GRADIENT = ['#4361EE', '#48CAE4'];
 const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-const STARS = Array.from({ length: 22 }, (_, i) => ({
-  id: i,
-  x: Math.random() * 92 + 2,
-  y: Math.random() * 88 + 2,
-  size: 1.5 + Math.random() * 2.5,
-  baseOpacity: 0.5 + Math.random() * 0.5,
-  group: i % 4,
-}));
-
 function toLocalDateString(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -331,16 +322,6 @@ export default function ClientHome() {
   const glowOpacity = useSharedValue(0);
   const floatY = useSharedValue(0);
 
-  // ── Star twinkle groups ───────────────────────────────────────────────────
-  const twinkle0 = useSharedValue(1);
-  const twinkle1 = useSharedValue(1);
-  const twinkle2 = useSharedValue(1);
-  const twinkle3 = useSharedValue(1);
-
-  // ── Bottom moon float ─────────────────────────────────────────────────────
-  const moonFloat = useSharedValue(0);
-
-
   useEffect(() => {
     if (!checkedInToday) {
       glowOpacity.value = withRepeat(withTiming(1, { duration: 1400 }), -1, true);
@@ -350,14 +331,6 @@ export default function ClientHome() {
       floatY.value = withTiming(0, { duration: 400 });
     }
   }, [checkedInToday]);
-
-  useEffect(() => {
-    twinkle0.value = withRepeat(withTiming(0.2, { duration: 1300 }), -1, true);
-    twinkle1.value = withDelay(300, withRepeat(withTiming(0.15, { duration: 1600 }), -1, true));
-    twinkle2.value = withDelay(600, withRepeat(withTiming(0.25, { duration: 1050 }), -1, true));
-    twinkle3.value = withDelay(900, withRepeat(withTiming(0.1, { duration: 1800 }), -1, true));
-    moonFloat.value = withRepeat(withTiming(-6, { duration: 2200 }), -1, true);
-  }, []);
 
 
   // ── Parallax: header elements resist scroll at different rates ────────────
@@ -380,18 +353,6 @@ export default function ClientHome() {
   const floatStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: floatY.value }],
   }));
-
-  const twinkleStyle0 = useAnimatedStyle(() => ({ opacity: twinkle0.value }));
-  const twinkleStyle1 = useAnimatedStyle(() => ({ opacity: twinkle1.value }));
-  const twinkleStyle2 = useAnimatedStyle(() => ({ opacity: twinkle2.value }));
-  const twinkleStyle3 = useAnimatedStyle(() => ({ opacity: twinkle3.value }));
-  const twinkleStyles = [twinkleStyle0, twinkleStyle1, twinkleStyle2, twinkleStyle3];
-
-  const floatingMoonStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: moonFloat.value }],
-  }));
-
-
 
   // ── Calendar day tap — jump to and expand that day's entries in the list
   // below (all of them, timestamped in order) instead of a separate panel ──
@@ -424,36 +385,12 @@ export default function ClientHome() {
     );
   }
 
-  const starGroups = [0, 1, 2, 3].map(g => STARS.filter(s => s.group === g));
-
   return (
     <View style={styles.container}>
-      {/* Header extension — sits behind ScrollView, revealed on iOS overscroll.
-          Gradient fades from dark navy at top into the exact header blue at bottom
-          so it looks like the header simply continues upward. */}
-      <View style={styles.headerExtension} pointerEvents="none">
-        <LinearGradient
-          colors={['#0a0e1f', '#0d1535', '#1e2f7a', '#4361EE']}
-          style={StyleSheet.absoluteFill}
-        />
-        {starGroups.map((group, gi) => (
-          <Animated.View key={gi} style={[StyleSheet.absoluteFill, twinkleStyles[gi]]}>
-            {group.map(star => (
-              <View
-                key={star.id}
-                style={[styles.star, {
-                  left: `${star.x}%`,
-                  top: `${star.y * 0.72}%`,
-                  width: star.size,
-                  height: star.size,
-                  opacity: star.baseOpacity,
-                }]}
-              />
-            ))}
-          </Animated.View>
-        ))}
-        <Text style={styles.skyMoon}>🌙</Text>
-      </View>
+      {/* Header extension — sits behind ScrollView, revealed on overscroll bounce.
+          Solid fill of the header gradient's top color, so it matches exactly where
+          the header gradient begins instead of showing its own (differently-scaled) gradient. */}
+      <View style={[styles.headerExtension, { backgroundColor: GRADIENT[0] }]} pointerEvents="none" />
 
       <Animated.ScrollView
         ref={scrollViewRef}
@@ -648,7 +585,7 @@ export default function ClientHome() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0e1f',
+    backgroundColor: GRADIENT[0],
   },
   headerExtension: {
     position: 'absolute',
@@ -656,19 +593,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SCREEN_HEIGHT,
-    overflow: 'hidden',
-  },
-  star: {
-    position: 'absolute',
-    borderRadius: 99,
-    backgroundColor: '#ffffff',
-  },
-  skyMoon: {
-    position: 'absolute',
-    top: 28,
-    right: 28,
-    fontSize: 26,
-    opacity: 0.85,
   },
   centered: {
     flex: 1,
