@@ -32,10 +32,18 @@ export const useEntries = (userId) => {
     const unsubscribe = onSnapshot(
       entriesQuery,
       (snapshot) => {
-        const entriesData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const entriesData = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          // Firestore only orders by `date` (a day-string) above, so multiple
+          // check-ins on the same day aren't guaranteed to come back in the
+          // order they were created — break ties by timestamp here.
+          .sort((a, b) => {
+            if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+            return (b.timestamp || 0) - (a.timestamp || 0);
+          });
 
         setEntries(entriesData);
         setLoading(false);

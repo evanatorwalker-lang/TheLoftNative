@@ -8,27 +8,72 @@ import {
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
+const SYNTHETIC_EMAIL_DOMAIN = 'users.theloftapp.internal';
+
 /**
- * Sign up a new user with email and password
- * @param {string} email - User email
+ * Sanitize a username into a valid Firebase email local-part
+ * @param {string} raw - Raw username
+ * @returns {string} Sanitized username
+ */
+export const sanitizeUsername = (raw) => {
+  return (raw || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+};
+
+/**
+ * Firebase Auth requires an email-shaped credential internally. We never
+ * collect or show a real email, so we derive a fake one from the username.
+ * @param {string} username - Username
+ * @returns {string} Synthetic email
+ */
+export const usernameToSyntheticEmail = (username) => {
+  return `${sanitizeUsername(username)}@${SYNTHETIC_EMAIL_DOMAIN}`;
+};
+
+/**
+ * Build the app-facing user object. Never surfaces email. Falls back to the
+ * legacy displayName field so existing accounts (created before usernames
+ * existed) work everywhere without a data migration.
+ * @param {Object} firebaseUser - Firebase auth user
+ * @param {Object} docData - Firestore users/{uid} document data
+ * @returns {Object} Normalized user object
+ */
+const normalizeUserData = (firebaseUser, docData) => {
+  return {
+    uid: firebaseUser.uid,
+    username: docData.username || docData.displayName || firebaseUser.displayName || 'User',
+    ...docData,
+  };
+};
+
+/**
+ * Sign up a new user with a username and password
+ * @param {string} username - User's chosen username
  * @param {string} password - User password
- * @param {string} displayName - User display name
  * @param {string} role - User role ('client' or 'therapist')
  * @returns {Promise<Object>} User object with role
  */
-export const signUp = async (email, password, displayName, role, notificationTime = '09:00') => {
+export const signUp = async (username, password, role, notificationTime = '09:00') => {
   try {
-    // Create Firebase auth user
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const syntheticEmail = usernameToSyntheticEmail(username);
+
+    // Create Firebase auth user (email is a fake, internal-only credential)
+    let userCredential;
+    try {
+      userCredential = await createUserWithEmailAndPassword(auth, syntheticEmail, password);
+    } catch (error) {
+      if (error.code === 'auth/email-already-in-use') {
+        throw new Error('That username is already taken. Please choose another.');
+      }
+      throw error;
+    }
     const user = userCredential.user;
 
     // Update display name
-    await updateProfile(user, { displayName });
+    await updateProfile(user, { displayName: username });
 
     // Create user document in Firestore with role
     const userData = {
-      email,
-      displayName,
+      username,
       role,
       createdAt: new Date().toISOString()
     };
@@ -52,12 +97,7 @@ export const signUp = async (email, password, displayName, role, notificationTim
       });
     }
 
-    return {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      ...userData
-    };
+    return normalizeUserData(user, userData);
   } catch (error) {
     console.error('Sign up error:', error);
     throw error;
@@ -66,13 +106,17 @@ export const signUp = async (email, password, displayName, role, notificationTim
 
 /**
  * Sign in an existing user
- * @param {string} email - User email
+ * @param {string} identifier - Username (new accounts) or real email (legacy accounts)
  * @param {string} password - User password
  * @returns {Promise<Object>} User object with role
  */
-export const login = async (email, password) => {
+export const login = async (identifier, password) => {
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    // Legacy accounts (created before usernames existed) still sign in with
+    // their real email. New accounts never have a real email — sign in with
+    // the synthetic one derived from their username.
+    const signInEmail = identifier.includes('@') ? identifier : usernameToSyntheticEmail(identifier);
+    const userCredential = await signInWithEmailAndPassword(auth, signInEmail, password);
     const user = userCredential.user;
 
     // Fetch user data from Firestore
@@ -82,12 +126,7 @@ export const login = async (email, password) => {
       throw new Error('User data not found');
     }
 
-    return {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      ...userDoc.data()
-    };
+    return normalizeUserData(user, userDoc.data());
   } catch (error) {
     console.error('Login error:', error);
     throw error;
@@ -131,12 +170,7 @@ export const getCurrentUser = async (firebaseUser, retryCount = 0) => {
       return null;
     }
 
-    return {
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      displayName: firebaseUser.displayName,
-      ...userDoc.data()
-    };
+    return normalizeUserData(firebaseUser, userDoc.data());
   } catch (error) {
     console.error('Get current user error:', error);
 

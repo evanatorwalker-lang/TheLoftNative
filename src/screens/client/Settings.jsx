@@ -10,25 +10,22 @@ import {
   ActivityIndicator,
   Modal,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../src/services/firebase';
-import { reschedule, cancelAllNotifications } from '../../src/services/notification.service';
-import { timeStringToDate, dateToTimeString, formatTime } from '../../src/utils/timeHelpers';
+import { db } from '../../services/firebase';
+import { reschedule, cancelAllNotifications } from '../../services/notification.service';
+import { timeStringToDate, dateToTimeString, formatTime } from '../../utils/timeHelpers';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-const NAV_ITEMS = [
-  { label: 'Home',     icon: 'home-outline',     route: '/(client)/' },
-  { label: 'Insights', icon: 'bar-chart-outline', route: '/(client)/insights' },
-  { label: 'Settings', icon: 'settings-outline',  route: '/(client)/settings' },
-];
-import { useApp } from '../../src/context/AppContext';
-import { logout } from '../../src/services/auth.service';
-import { linkClientToTherapist, disconnectFromTherapist } from '../../src/services/pairing.service';
-import { colors, spacing, radius, font } from '../../src/theme';
+import { useApp } from '../../context/AppContext';
+import { logout } from '../../services/auth.service';
+import { linkClientToTherapist, disconnectFromTherapist } from '../../services/pairing.service';
+import { colors, spacing, radius, font } from '../../theme';
 
 export default function SettingsScreen() {
   const { currentUser, updateUser } = useApp();
@@ -36,7 +33,6 @@ export default function SettingsScreen() {
   const [pairingCode, setPairingCode] = useState('');
   const [linking, setLinking] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(currentUser?.notificationsEnabled !== false);
   const [notifTime, setNotifTime] = useState(currentUser?.notificationTime || '09:00');
@@ -98,7 +94,7 @@ export default function SettingsScreen() {
       const therapistId = await linkClientToTherapist(
         currentUser.uid,
         trimmedCode,
-        { displayName: currentUser.displayName, email: currentUser.email }
+        { username: currentUser.username }
       );
       updateUser({ therapistId, connectionMode: 'therapist' });
       setPairingCode('');
@@ -157,24 +153,22 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Settings</Text>
-        <TouchableOpacity style={styles.menuBtn} onPress={() => setMenuOpen(true)}>
-          <Ionicons name="menu-outline" size={22} color={colors.text} />
-        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
         {/* Account info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.card}>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Name</Text>
-              <Text style={styles.rowValue}>{currentUser?.displayName}</Text>
-            </View>
             <View style={[styles.row, styles.rowLast]}>
-              <Text style={styles.rowLabel}>Email</Text>
-              <Text style={styles.rowValue}>{currentUser?.email}</Text>
+              <Text style={styles.rowLabel}>Username</Text>
+              <Text style={styles.rowValue}>{currentUser?.username}</Text>
             </View>
           </View>
         </View>
@@ -279,6 +273,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Time picker modal */}
       <Modal visible={timePickerOpen} transparent animationType="slide" onRequestClose={() => setTimePickerOpen(false)}>
@@ -300,32 +295,6 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
-          <View style={styles.menuDropdown}>
-            {NAV_ITEMS.map((item, i) => (
-              <TouchableOpacity
-                key={item.route}
-                style={[
-                  styles.menuItem,
-                  item.label === 'Settings' && styles.menuItemActive,
-                  i < NAV_ITEMS.length - 1 && styles.menuItemBorder,
-                ]}
-                onPress={() => { setMenuOpen(false); router.replace(item.route); }}
-              >
-                <Ionicons
-                  name={item.icon}
-                  size={20}
-                  color={item.label === 'Settings' ? colors.primary : colors.textSecondary}
-                />
-                <Text style={[styles.menuItemLabel, item.label === 'Settings' && styles.menuItemLabelActive]}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -345,45 +314,6 @@ const styles = StyleSheet.create({
     fontWeight: String(font.bold),
     color: colors.text,
   },
-  menuBtn: {
-    width: 44,
-    height: 44,
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  menuOverlay: { flex: 1 },
-  menuDropdown: {
-    position: 'absolute',
-    top: 90,
-    right: spacing.lg,
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    width: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: spacing.md,
-    gap: spacing.md,
-  },
-  menuItemActive: { backgroundColor: colors.primaryLight },
-  menuItemBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  menuItemLabel: { fontSize: 16, color: colors.textSecondary, fontWeight: String(font.medium) },
-  menuItemLabelActive: { color: colors.primary, fontWeight: String(font.semibold) },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   section: { marginBottom: spacing.lg },
   sectionTitle: {

@@ -31,6 +31,7 @@ import { createEntry, updateEntry, getTodayEntries } from '../../src/services/en
 import { scheduleStreakRisk } from '../../src/services/notification.service';
 import { timeStringToDate, dateToTimeString, formatTime, computeSleepHours } from '../../src/utils/timeHelpers';
 import { getYesterdayDateString } from '../../src/utils/dateHelpers';
+import { SwipeHint } from '../../src/components/SwipeHint';
 import { colors, spacing, radius, font } from '../../src/theme';
 
 const DURATIONS = ['<30 min', '30-60 min', '1hr+'];
@@ -314,23 +315,26 @@ export default function DailyCheckInScreen() {
     if (slideIndex === MOVEMENT_STEP) {
       return (
         <GestureDetector key="movement" gesture={makeSwipeGesture()}>
-          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-            <Text style={styles.stepTitle}>Movement</Text>
-            <Text style={styles.subLabel}>Did you move yesterday?</Text>
-            {renderYesNo(
-              values.movedYesterday,
-              () => setValues(p => ({ ...p, movedYesterday: true })),
-              () => { setValues(p => ({ ...p, movedYesterday: false, movementAmount: null, movementActivities: [] })); advanceOnAnswer(); }
-            )}
-            {values.movedYesterday === true && (
-              <>
-                <Text style={styles.subLabel}>How much?</Text>
-                {renderChips(values.movementAmount, (d) => () => setVal('movementAmount')(d))}
-                <Text style={styles.subLabel}>What kind? (optional)</Text>
-                {renderActivityGrid(MOVEMENT_ACTIVITIES, values.movementActivities, toggleMovementActivity)}
-              </>
-            )}
-          </ScrollView>
+          <View style={{ flex: 1 }}>
+            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+              <Text style={styles.stepTitle}>Movement</Text>
+              <Text style={styles.subLabel}>Did you move yesterday?</Text>
+              {renderYesNo(
+                values.movedYesterday,
+                () => setValues(p => ({ ...p, movedYesterday: true })),
+                () => { setValues(p => ({ ...p, movedYesterday: false, movementAmount: null, movementActivities: [] })); advanceOnAnswer(); }
+              )}
+              {values.movedYesterday === true && (
+                <>
+                  <Text style={styles.subLabel}>How much?</Text>
+                  {renderChips(values.movementAmount, (d) => () => setVal('movementAmount')(d))}
+                  <Text style={styles.subLabel}>What kind? (optional)</Text>
+                  {renderActivityGrid(MOVEMENT_ACTIVITIES, values.movementActivities, toggleMovementActivity)}
+                </>
+              )}
+            </ScrollView>
+            <SwipeHint />
+          </View>
         </GestureDetector>
       );
     }

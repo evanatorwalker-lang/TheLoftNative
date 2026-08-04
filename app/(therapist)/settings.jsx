@@ -75,13 +75,9 @@ export default function TherapistSettings() {
         {/* Account card */}
         <Text style={styles.sectionLabel}>Account</Text>
         <View style={[styles.card, CARD_SHADOW]}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoKey}>Name</Text>
-            <Text style={styles.infoValue}>{currentUser?.displayName || '—'}</Text>
-          </View>
           <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-            <Text style={styles.infoKey}>Email</Text>
-            <Text style={styles.infoValue}>{currentUser?.email || '—'}</Text>
+            <Text style={styles.infoKey}>Username</Text>
+            <Text style={styles.infoValue}>{currentUser?.username || '—'}</Text>
           </View>
         </View>
 

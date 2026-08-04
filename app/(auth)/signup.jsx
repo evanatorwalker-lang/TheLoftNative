@@ -33,10 +33,11 @@ const dateToTimeString = (date) => {
   return `${h}:${m}`;
 };
 
+const USERNAME_REGEX = /^[a-zA-Z0-9_.-]{3,20}$/;
+
 export default function SignupScreen() {
   const [step, setStep] = useState(0);
-  const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState(null);
   const [reminderTime, setReminderTime] = useState('09:00');
@@ -48,9 +49,10 @@ export default function SignupScreen() {
   const goBack = () => setStep(s => Math.max(s - 1, 0));
 
   const validateStep0 = () => {
-    if (!displayName.trim()) return 'Please enter your name.';
-    if (!email.trim()) return 'Please enter your email.';
-    if (!email.trim().includes('@')) return 'Please enter a valid email address.';
+    if (!username.trim()) return 'Please choose a username.';
+    if (!USERNAME_REGEX.test(username.trim())) {
+      return 'Username must be 3-20 characters (letters, numbers, underscores, periods, hyphens).';
+    }
     if (password.length < 6) return 'Password must be at least 6 characters.';
     return null;
   };
@@ -70,7 +72,7 @@ export default function SignupScreen() {
   const handleFinish = async () => {
     setLoading(true);
     try {
-      const user = await signUp(email.trim(), password, displayName.trim(), role, reminderTime);
+      const user = await signUp(username.trim(), password, role, reminderTime);
 
       // Set up notifications for clients
       if (role === 'client') {
@@ -124,28 +126,19 @@ export default function SignupScreen() {
             <View>
               <Text style={styles.stepTitle}>Your Details</Text>
               <View style={styles.field}>
-                <Text style={styles.label}>Full Name</Text>
+                <Text style={styles.label}>Username</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Jane Smith"
+                  placeholder="coolusername22"
                   placeholderTextColor={colors.textSecondary}
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                  autoCapitalize="words"
-                />
-              </View>
-              <View style={styles.field}>
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="you@example.com"
-                  placeholderTextColor={colors.textSecondary}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
+                  value={username}
+                  onChangeText={setUsername}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+                <Text style={styles.fieldHint}>
+                  For your privacy, we recommend not using your real name.
+                </Text>
               </View>
               <View style={styles.field}>
                 <Text style={styles.label}>Password</Text>
@@ -339,6 +332,11 @@ const styles = StyleSheet.create({
   },
   field: {
     marginBottom: spacing.md,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   label: {
     fontSize: 14,

@@ -17,7 +17,7 @@ import { login } from '../../src/services/auth.service';
 import { colors, spacing, radius, font } from '../../src/theme';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -26,11 +26,11 @@ export default function LoginScreen() {
     switch (error?.code) {
       case 'auth/user-not-found':
       case 'auth/invalid-credential':
-        return 'No account found with that email and password.';
+        return 'No account found with that username and password.';
       case 'auth/wrong-password':
         return 'Incorrect password. Please try again.';
       case 'auth/invalid-email':
-        return 'Please enter a valid email address.';
+        return 'No account found with that username.';
       case 'auth/too-many-requests':
         return 'Too many failed attempts. Please wait a moment and try again.';
       case 'auth/network-request-failed':
@@ -41,19 +41,15 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !password.trim()) {
-      Alert.alert('Error', 'Please enter your email and password.');
-      return;
-    }
-    if (!trimmedEmail.includes('@')) {
-      Alert.alert('Error', 'Please enter a valid email address.');
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || !password.trim()) {
+      Alert.alert('Error', 'Please enter your username and password.');
       return;
     }
 
     setLoading(true);
     try {
-      const user = await login(trimmedEmail, password);
+      const user = await login(trimmedUsername, password);
       if (user.role === 'therapist') {
         router.replace('/(therapist)');
       } else {
@@ -83,14 +79,13 @@ export default function LoginScreen() {
 
         <View style={styles.card}>
           <View style={styles.field}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>Username</Text>
             <TextInput
               style={styles.input}
-              placeholder="you@example.com"
+              placeholder="Your username"
               placeholderTextColor={colors.textSecondary}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
+              value={username}
+              onChangeText={setUsername}
               autoCapitalize="none"
               autoCorrect={false}
             />

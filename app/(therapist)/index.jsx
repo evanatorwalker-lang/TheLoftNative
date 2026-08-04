@@ -87,12 +87,11 @@ function ClientCard({ client, onPress, attention }) {
       <View style={styles.clientRow}>
         {/* Initials avatar */}
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(client.displayName)}</Text>
+          <Text style={styles.avatarText}>{getInitials(client.username || client.displayName)}</Text>
         </View>
 
         <View style={styles.clientInfo}>
-          <Text style={styles.clientName}>{client.displayName}</Text>
-          <Text style={styles.clientEmail}>{client.email}</Text>
+          <Text style={styles.clientName}>{client.username || client.displayName}</Text>
           {client.latestEntry ? (
             <Text style={styles.lastSeen}>
               Last check-in: {getRelativeDateString(client.latestEntry.date)}
@@ -146,8 +145,7 @@ export default function TherapistHome() {
 
   const filtered = useMemo(() =>
     clients.filter(c =>
-      c.displayName?.toLowerCase().includes(search.toLowerCase()) ||
-      c.email?.toLowerCase().includes(search.toLowerCase())
+      (c.username || c.displayName)?.toLowerCase().includes(search.toLowerCase())
     ),
     [clients, search]
   );
@@ -485,7 +483,6 @@ const styles = StyleSheet.create({
     fontWeight: String(font.semibold),
     color: DARK,
   },
-  clientEmail: { fontSize: 12, color: GRAY, marginTop: 1 },
   lastSeen: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
 
   chevronWrap: {

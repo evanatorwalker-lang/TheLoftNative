@@ -5,7 +5,7 @@ import { db } from './firebase';
  * Link a client to a therapist using a pairing code
  * @param {string} clientId - Client's user ID
  * @param {string} pairingCode - Therapist's pairing code
- * @param {Object} clientData - Client's user data (displayName, email)
+ * @param {Object} clientData - Client's user data (username)
  * @returns {Promise<string>} Therapist ID
  */
 export const linkClientToTherapist = async (clientId, pairingCode, clientData) => {
@@ -39,8 +39,7 @@ export const linkClientToTherapist = async (clientId, pairingCode, clientData) =
     const therapistClientsDoc = await getDoc(therapistClientsRef);
 
     const clientInfo = {
-      displayName: clientData.displayName,
-      email: clientData.email,
+      username: clientData.username,
       connectedAt: new Date().toISOString()
     };
 
@@ -135,8 +134,7 @@ export const getTherapistInfo = async (therapistId) => {
 
     return {
       id: therapistDoc.id,
-      displayName: therapistData.displayName,
-      email: therapistData.email,
+      username: therapistData.username || therapistData.displayName,
       pairingCode: therapistData.pairingCode
     };
   } catch (error) {

@@ -145,3 +145,25 @@ export const getTodayEntry = (entries) => {
   const today = getTodayDateString();
   return entries.find(entry => entry.date === today) || null;
 };
+
+// Legacy entries predate the mood/fiveFactors split — treat them as the
+// primary daily check-in so existing streak history isn't lost.
+export const isFiveFactorEntry = (e) => e.type === 'fiveFactors' || e.type == null;
+
+export const getMotivation = (streak) => {
+  if (streak === 0) return "Start your streak today";
+  if (streak === 1) return "Day one done — keep it going";
+  if (streak < 5) return "Building momentum";
+  if (streak < 10) return "You're on a roll";
+  if (streak < 21) return "Incredible consistency";
+  if (streak < 50) return "You're unstoppable";
+  return "Legendary streak";
+};
+
+export const getTrophyTier = (streak) => {
+  if (streak === 0) return { name: 'trophy-outline', color: '#9ca3af', tier: 'NO STREAK YET' };
+  if (streak < 7)   return { name: 'trophy',         color: '#CD7F32', tier: 'BRONZE TIER' };
+  if (streak < 21)  return { name: 'trophy',         color: '#C0C0C0', tier: 'SILVER TIER' };
+  if (streak < 50)  return { name: 'trophy',         color: '#FFE066', tier: 'GOLD TIER' };
+  return                   { name: 'trophy',         color: '#B2EBF2', tier: 'PLATINUM TIER' };
+};

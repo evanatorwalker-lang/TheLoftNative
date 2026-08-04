@@ -834,10 +834,9 @@ export default function ClientDetailsScreen() {
     <View style={styles.clientHeader}>
       <View style={styles.profileSection}>
         <View style={styles.profileAvatar}>
-          <Text style={styles.profileAvatarText}>{getInitials(client?.displayName)}</Text>
+          <Text style={styles.profileAvatarText}>{getInitials(client?.username || client?.displayName)}</Text>
         </View>
-        <Text style={styles.clientName}>{client?.displayName}</Text>
-        <Text style={styles.clientEmail}>{client?.email}</Text>
+        <Text style={styles.clientName}>{client?.username || client?.displayName}</Text>
       </View>
       <View style={styles.statsRow}>
         {[
@@ -1012,12 +1011,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: String(font.bold),
     color: DARK,
-    textAlign: 'center',
-  },
-  clientEmail: {
-    fontSize: 13,
-    color: GRAY,
-    marginTop: 2,
     textAlign: 'center',
   },
 

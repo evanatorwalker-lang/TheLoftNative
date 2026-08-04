@@ -1,27 +1,19 @@
-import { useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useApp } from '../../src/context/AppContext';
-import { useEntries } from '../../src/hooks/useEntries';
-import { getRelativeDateString } from '../../src/utils/dateHelpers';
-import { formatActivity } from '../../src/utils/labelHelpers';
-import { colors, spacing, radius, font } from '../../src/theme';
-import { MoodFace } from '../../src/components/MoodFace';
-
-const NAV_ITEMS = [
-  { label: 'Home', icon: 'home-outline', route: '/(client)/' },
-  { label: 'Insights', icon: 'bar-chart-outline', route: '/(client)/insights' },
-  { label: 'Settings', icon: 'settings-outline', route: '/(client)/settings' },
-];
+import { useApp } from '../../context/AppContext';
+import { useEntries } from '../../hooks/useEntries';
+import { getRelativeDateString } from '../../utils/dateHelpers';
+import { formatActivity } from '../../utils/labelHelpers';
+import { colors, spacing, radius, font } from '../../theme';
+import { MoodFace } from '../../components/MoodFace';
 
 function MetricBar({ label, value, max = 10, color = colors.primary }) {
   return (
@@ -50,7 +42,6 @@ export default function InsightsScreen() {
   const { currentUser } = useApp();
   const { entries = [], loading } = useEntries(currentUser?.uid);
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
 
   if (loading) {
     return (
@@ -65,9 +56,6 @@ export default function InsightsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Insights</Text>
-        <TouchableOpacity style={styles.menuBtn} onPress={() => setMenuOpen(true)}>
-          <Ionicons name="menu-outline" size={22} color={colors.text} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -187,32 +175,6 @@ export default function InsightsScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
-          <View style={styles.menuDropdown}>
-            {NAV_ITEMS.map((item, i) => (
-              <TouchableOpacity
-                key={item.route}
-                style={[
-                  styles.menuItem,
-                  item.label === 'Insights' && styles.menuItemActive,
-                  i < NAV_ITEMS.length - 1 && styles.menuItemBorder,
-                ]}
-                onPress={() => { setMenuOpen(false); router.replace(item.route); }}
-              >
-                <Ionicons
-                  name={item.icon}
-                  size={20}
-                  color={item.label === 'Insights' ? colors.primary : colors.textSecondary}
-                />
-                <Text style={[styles.menuItemLabel, item.label === 'Insights' && styles.menuItemLabelActive]}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -229,45 +191,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  menuBtn: {
-    width: 44,
-    height: 44,
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  menuOverlay: { flex: 1 },
-  menuDropdown: {
-    position: 'absolute',
-    top: 90,
-    right: spacing.lg,
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    width: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: spacing.md,
-    gap: spacing.md,
-  },
-  menuItemActive: { backgroundColor: colors.primaryLight },
-  menuItemBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  menuItemLabel: { fontSize: 16, color: colors.textSecondary, fontFamily: font.medium },
-  menuItemLabelActive: { color: colors.primary, fontFamily: font.semibold },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   pageTitle: {
     fontSize: 28,

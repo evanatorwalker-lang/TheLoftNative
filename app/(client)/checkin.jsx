@@ -38,7 +38,7 @@ const GREEN = '#86efac';
 // "very calm") — accepted tradeoff, existing saved entries read differently.
 const BASE_SLIDER_STEPS = [
   { key: 'mood',       min: 1,  max: 10, leftLabel: 'Worst Day',   rightLabel: 'Best Day',      subtitle: 'Overall mood',          colorLow: RED,   colorHigh: GREEN }, // high = good
-  { key: 'stress',     min: 1,  max: 10, leftLabel: 'Anxious',     rightLabel: 'Calm',          subtitle: 'Stress level',          colorLow: RED,   colorHigh: GREEN }, // high = good
+  { key: 'stress',     min: 1,  max: 10, leftLabel: 'Tense',       rightLabel: 'Calm',          subtitle: 'Stress level',          colorLow: RED,   colorHigh: GREEN }, // high = good
   { key: 'worry',      min: 1,  max: 10, leftLabel: 'Overthinking',rightLabel: 'Clear Headed',  subtitle: 'Anxiety & worry',       colorLow: RED,   colorHigh: GREEN }, // high = good
   { key: 'emotions',   min: 1,  max: 10, leftLabel: 'Rollercoaster',rightLabel: 'Super Steady', subtitle: 'Emotional stability',   colorLow: RED,   colorHigh: GREEN }, // high = good
   { key: 'focus',      min: 1,  max: 10, leftLabel: 'Zoned Out',   rightLabel: 'Locked In',     subtitle: 'Concentration & focus', colorLow: RED,   colorHigh: GREEN }, // high = good
@@ -104,7 +104,7 @@ function SelfHarmStep({ value, onChange, onHorizontalMove, onHorizontalEnd }) {
         </TouchableOpacity>
 
         <View style={selfHarmStyles.titleWrap} pointerEvents="none">
-          <Text style={selfHarmStyles.title}>Did you self-harm yesterday?</Text>
+          <Text style={selfHarmStyles.title}>Did you self-harm?</Text>
         </View>
       </View>
     </GestureDetector>
@@ -154,46 +154,14 @@ const selfHarmStyles = StyleSheet.create({
 function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizontalEnd, footer }) {
   const { height: screenHeight } = useWindowDimensions();
 
-  // Single 0→1 progress drives both fill height and color
-  const toProgress = (v) => (v - config.min) / (config.max - config.min);
-  const progress = useSharedValue(toProgress(value));
-
-  // Asymmetric wave radii on the top edge of the fill
-  const waveLeft  = useSharedValue(12);
-  const waveRight = useSharedValue(30);
-
-  // Sync when value prop changes
-  useEffect(() => {
-    progress.value = withTiming(toProgress(value), { duration: 100 });
-  }, [value]);
-
-  // Looping wave animation
-  useEffect(() => {
-    waveLeft.value = withRepeat(
-      withSequence(withTiming(30, { duration: 1800 }), withTiming(12, { duration: 1800 })),
-      -1, false
-    );
-    waveRight.value = withRepeat(
-      withSequence(withTiming(12, { duration: 1800 }), withTiming(30, { duration: 1800 })),
-      -1, false
-    );
-  }, []);
-
-  // min → ~3% of screen height (barely visible), max → 100% (full screen)
-  const fillStyle = useAnimatedStyle(() => ({
-    height: screenHeight * (0.03 + progress.value * 0.97),
-    backgroundColor: interpolateColor(progress.value, [0, 1], [config.colorLow, config.colorHigh]),
-    borderTopLeftRadius:  waveLeft.value,
-    borderTopRightRadius: waveRight.value,
-  }));
-
   // Gesture state tracked with refs (gesture runs on JS thread)
   const gestureStartValue = useRef(value);
   const gestureMode       = useRef('idle'); // 'idle' | 'vertical' | 'horizontal'
   const lastEmittedValue  = useRef(value);
 
-  // Drag travel mapped over half the screen height = full value range
-  const dragRange = screenHeight * 0.5;
+  // Drag travel mapped over the full value range — larger fraction of
+  // screen height = more drag needed per step = lower sensitivity.
+  const dragRange = screenHeight * 0.44;
 
   const panGesture = Gesture.Pan()
     .runOnJS(true)
@@ -216,7 +184,6 @@ function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizon
         const newVal = Math.round(
           Math.max(config.min, Math.min(config.max, gestureStartValue.current + delta))
         );
-        progress.value = withTiming(toProgress(newVal), { duration: 50 });
         if (newVal !== lastEmittedValue.current) {
           lastEmittedValue.current = newVal;
           onChange(newVal);
@@ -238,13 +205,7 @@ function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizon
   return (
     <GestureDetector gesture={panGesture}>
       <View style={{ flex: 1, overflow: 'visible' }}>
-        {/* Animated fill — rises from the bottom */}
-        <Animated.View style={[
-          { position: 'absolute', bottom: 0, left: 0, right: 0 },
-          fillStyle,
-        ]} />
-
-        {/* Content overlaid on fill */}
+        {/* Content — background fill is now a full-screen layer owned by the parent screen */}
         <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }}>
 
           {/* Big number — truly centered, unaffected by label heights */}
@@ -262,7 +223,10 @@ function LiquidSliderStep({ config, value, onChange, onHorizontalMove, onHorizon
           </View>
 
           {/* Low label — pinned to bottom */}
-          <View style={[liquidStyles.bottomLabelWrap, footer && { paddingBottom: spacing.xxl + 76 }]}>
+          <View style={[
+            liquidStyles.bottomLabelWrap,
+            footer && { paddingBottom: spacing.xxl + 76 },
+          ]}>
             <Ionicons name="arrow-down-outline" size={18} color={colors.textSecondary} />
             <Text style={liquidStyles.extremeLabel}>{config.leftLabel}</Text>
           </View>
@@ -320,7 +284,7 @@ const liquidStyles = StyleSheet.create({
 export default function CheckInScreen() {
   const { currentUser } = useApp();
   const router = useRouter();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [isSuicidalFlagged, setIsSuicidalFlagged] = useState(false);
@@ -356,6 +320,63 @@ export default function CheckInScreen() {
   });
 
   const setVal = (key) => (v) => setValues(prev => ({ ...prev, [key]: v }));
+
+  // ── Full-screen fill ────────────────────────────────────────
+  // The whole screen (behind the header) fills with color as the
+  // active slider's value rises, maxing out at a complete green
+  // takeover at 10. Driven by the active step's committed value
+  // rather than raw drag position — same granularity the old
+  // per-slide fill used (both quantize to integer steps).
+  const activeConfig = activeSteps[step];
+  const initialProgress = activeConfig && activeConfig.key !== 'selfHarm'
+    ? (values[activeConfig.key] - activeConfig.min) / (activeConfig.max - activeConfig.min)
+    : 0;
+  const fillProgress = useSharedValue(initialProgress);
+  // SelfHarmStep paints its own full-bleed top/bottom colors, so the shared
+  // fill needs to get out of the way entirely on that step — otherwise the
+  // previous slide's leftover color peeks out from behind the header.
+  const fillVisible = useSharedValue(activeConfig?.key === 'selfHarm' ? 0 : 1);
+  const waveLeft  = useSharedValue(12);
+  const waveRight = useSharedValue(30);
+
+  useEffect(() => {
+    waveLeft.value = withRepeat(
+      withSequence(withTiming(30, { duration: 1800 }), withTiming(12, { duration: 1800 })),
+      -1, false
+    );
+    waveRight.value = withRepeat(
+      withSequence(withTiming(12, { duration: 1800 }), withTiming(30, { duration: 1800 })),
+      -1, false
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!activeConfig) return;
+    if (activeConfig.key === 'selfHarm') {
+      // "No" (good/green) mirrors a slider maxed out at 10 — full green
+      // takeover including behind the header. "Yes"/unanswered stays hidden
+      // so SelfHarmStep's own split-screen colors show through untouched.
+      if (values.selfHarm === false) {
+        fillProgress.value = withTiming(1, { duration: 260 });
+        fillVisible.value = withTiming(1, { duration: 260 });
+      } else {
+        fillVisible.value = withTiming(0, { duration: 150 });
+      }
+      return;
+    }
+    fillVisible.value = withTiming(1, { duration: 150 });
+    const p = (values[activeConfig.key] - activeConfig.min) / (activeConfig.max - activeConfig.min);
+    fillProgress.value = withTiming(p, { duration: 60 });
+  }, [step, activeConfig && values[activeConfig.key]]);
+
+  // min → ~3% of screen height (barely visible), max → 100% (full screen, edge to edge)
+  const screenFillStyle = useAnimatedStyle(() => ({
+    height: screenHeight * (0.03 + fillProgress.value * 0.97),
+    backgroundColor: interpolateColor(fillProgress.value, [0, 1], [RED, GREEN]),
+    borderTopLeftRadius:  waveLeft.value,
+    borderTopRightRadius: waveRight.value,
+    opacity: fillVisible.value,
+  }));
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -419,6 +440,26 @@ export default function CheckInScreen() {
     totalOffset.value = base + dx;
   };
 
+  // Kick the fill off toward the target slide's value in lockstep with the
+  // swipe animation, so the color arrives at the same time the slide does
+  // instead of visibly catching up afterward.
+  const animateFillTo = (targetStep) => {
+    const cfg = activeSteps[targetStep];
+    if (!cfg) return;
+    if (cfg.key === 'selfHarm') {
+      if (values.selfHarm === false) {
+        fillProgress.value = withTiming(1, { duration: 260 });
+        fillVisible.value = withTiming(1, { duration: 260 });
+      } else {
+        fillVisible.value = withTiming(0, { duration: 200 });
+      }
+      return;
+    }
+    fillVisible.value = withTiming(1, { duration: 200 });
+    const p = (values[cfg.key] - cfg.min) / (cfg.max - cfg.min);
+    fillProgress.value = withTiming(p, { duration: 260 });
+  };
+
   const handleHorizontalEnd = (dx) => {
     const THRESHOLD = screenWidth * 0.15;
     const canGoNext = step < TOTAL_STEPS - 1;
@@ -426,10 +467,12 @@ export default function CheckInScreen() {
 
     if (dx < -THRESHOLD && canGoNext) {
       // Snap to next: totalOffset stays at target — no reset, no glitch
+      animateFillTo(step + 1);
       totalOffset.value = withTiming(-(step + 1) * screenWidth, { duration: 260 }, (finished) => {
         if (finished) runOnJS(goNext)();
       });
     } else if (dx > THRESHOLD && canGoBack) {
+      animateFillTo(step - 1);
       totalOffset.value = withTiming(-(step - 1) * screenWidth, { duration: 260 }, (finished) => {
         if (finished) runOnJS(goPrev)();
       });
@@ -489,6 +532,12 @@ export default function CheckInScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Full-screen fill — sits behind everything, takes over the whole screen at 10 */}
+      <Animated.View
+        style={[{ position: 'absolute', bottom: 0, left: 0, right: 0 }, screenFillStyle]}
+        pointerEvents="none"
+      />
+
       {/* Header — zIndex keeps it above the fill overflow at max value */}
       <View style={[styles.header, { zIndex: 10 }]}>
         <TouchableOpacity onPress={() =>
@@ -503,7 +552,6 @@ export default function CheckInScreen() {
         }>
           <Text style={styles.cancel}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Mood Check-in</Text>
         <Text style={styles.stepLabel}>{step + 1}/{TOTAL_STEPS}</Text>
       </View>
 
@@ -551,7 +599,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   cancel:    { fontSize: 16, color: colors.textSecondary },
-  title:     { fontSize: 17, fontFamily: font.semibold, color: colors.text },
   stepLabel: { fontSize: 14, color: colors.textSecondary },
   progressBar: {
     height: 4,
