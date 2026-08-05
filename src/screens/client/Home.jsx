@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Image,
   LayoutAnimation,
   Platform,
   UIManager,
@@ -277,6 +278,31 @@ export default function ClientHome() {
   const [expandedEntries, setExpandedEntries] = useState(() => new Set());
   const [highlight, setHighlight] = useState({ ids: new Set(), key: 0 });
   const [showMoodTooltip, setShowMoodTooltip] = useState(false);
+  const [showAteWellEgg, setShowAteWellEgg] = useState(false);
+  const ateWellTaps = useRef([]);
+
+  const handleAteWellTap = () => {
+    const now = Date.now();
+    ateWellTaps.current = ateWellTaps.current.filter(t => now - t < 800);
+    ateWellTaps.current.push(now);
+    if (ateWellTaps.current.length >= 3) {
+      ateWellTaps.current = [];
+      setShowAteWellEgg(true);
+    }
+  };
+
+  const [showSocialEgg, setShowSocialEgg] = useState(false);
+  const socialTaps = useRef([]);
+
+  const handleSocialTap = () => {
+    const now = Date.now();
+    socialTaps.current = socialTaps.current.filter(t => now - t < 800);
+    socialTaps.current.push(now);
+    if (socialTaps.current.length >= 3) {
+      socialTaps.current = [];
+      setShowSocialEgg(true);
+    }
+  };
 
   useEffect(() => {
     // TEMP: forcing this to always show so it can be previewed after the
@@ -487,9 +513,13 @@ export default function ClientHome() {
               <View style={styles.fiveFactorRow}>
                 <FactorPill icon="walk-outline" label="Moved" done={!!todayFiveFactorEntry.movedYesterday} />
                 <FactorPill icon="sunny-outline" label="Outside" done={!!todayFiveFactorEntry.wentOutside} />
-                <FactorPill icon="people-outline" label="Social" done={!!todayFiveFactorEntry.socialized} />
+                <TouchableOpacity activeOpacity={1} onPress={handleSocialTap}>
+                  <FactorPill icon="people-outline" label="Social" done={!!todayFiveFactorEntry.socialized} />
+                </TouchableOpacity>
                 <FactorPill icon="moon-outline" label={`${todayFiveFactorEntry.sleepHours ?? '—'}h`} done={(todayFiveFactorEntry.sleepHours ?? 0) >= 6} />
-                <FactorPill icon="restaurant-outline" label="Ate well" done={!!todayFiveFactorEntry.ateWell} />
+                <TouchableOpacity activeOpacity={1} onPress={handleAteWellTap}>
+                  <FactorPill icon="restaurant-outline" label="Ate well" done={!!todayFiveFactorEntry.ateWell} />
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -578,11 +608,41 @@ export default function ClientHome() {
         </View>
       </Animated.ScrollView>
 
+      <Modal visible={showAteWellEgg} transparent animationType="none" onRequestClose={() => setShowAteWellEgg(false)}>
+        <Pressable style={styles.ateWellEggOverlay} onPress={() => setShowAteWellEgg(false)}>
+          <Image
+            source={require('../../../assets/sister-easter-egg.jpg')}
+            style={styles.ateWellEggImage}
+            resizeMode="contain"
+          />
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showSocialEgg} transparent animationType="none" onRequestClose={() => setShowSocialEgg(false)}>
+        <Pressable style={styles.ateWellEggOverlay} onPress={() => setShowSocialEgg(false)}>
+          <Image
+            source={require('../../../assets/social-easter-egg.jpg')}
+            style={styles.ateWellEggImage}
+            resizeMode="contain"
+          />
+        </Pressable>
+      </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  ateWellEggOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ateWellEggImage: {
+    width: '90%',
+    height: '80%',
+  },
   container: {
     flex: 1,
     backgroundColor: GRADIENT[0],
